@@ -72,38 +72,38 @@ func (uc *CheckFeatureUseCase) Execute(registryDir, featureID string) (*CheckRes
 	// Build entry details
 	if e := foundFeature.Coverage.Unit.Backend; e != nil {
 		result.Entries["unit.backend"] = EntryDetail{
-			Status: e.Status, Files: e.Files, Mocked: e.Mocked,
+			Status: e.Status, Files: e.AllFiles(), Mocked: e.Mocked,
 		}
 	}
 	if e := foundFeature.Coverage.Unit.Web; e != nil {
 		result.Entries["unit.web"] = EntryDetail{
-			Status: e.Status, Files: e.Files, Mocked: e.Mocked,
+			Status: e.Status, Files: e.AllFiles(), Mocked: e.Mocked,
 		}
 	}
 	if e := foundFeature.Coverage.Unit.Mobile; e != nil {
 		result.Entries["unit.mobile"] = EntryDetail{
-			Status: e.Status, Files: e.Files, Mocked: e.Mocked,
+			Status: e.Status, Files: e.AllFiles(), Mocked: e.Mocked,
 		}
 	}
 	if e := foundFeature.Coverage.Integration.Backend; e != nil {
 		result.Entries["integration.backend"] = EntryDetail{
-			Status: e.Status, Files: e.Files, Mocked: e.Mocked,
+			Status: e.Status, Files: e.AllFiles(), Mocked: e.Mocked,
 		}
 	}
 	if e := foundFeature.Coverage.Integration.Mobile; e != nil {
 		result.Entries["integration.mobile"] = EntryDetail{
-			Status: e.Status, Files: e.Files, Mocked: e.Mocked,
+			Status: e.Status, Files: e.AllFiles(), Mocked: e.Mocked,
 		}
 	}
 	if e := foundFeature.Coverage.E2E.Web; e != nil {
 		result.Entries["e2e.web"] = EntryDetail{
-			Status: e.Status, Files: e.Files,
+			Status: e.Status, Files: e.AllFiles(),
 			PassRate: e.PassRate, LastRun: e.LastRun,
 		}
 	}
 	if e := foundFeature.Coverage.E2E.Mobile; e != nil {
 		result.Entries["e2e.mobile"] = EntryDetail{
-			Status: e.Status, Files: e.Files,
+			Status: e.Status, Files: e.AllFiles(),
 			PassRate: e.PassRate, LastRun: e.LastRun,
 		}
 	}

@@ -32,7 +32,7 @@ func (s *YAMLStore) LoadAll(dir string) (*domain.Registry, error) {
 
 	reg := &domain.Registry{}
 	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".yaml") {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".yaml") || strings.HasPrefix(entry.Name(), "_") {
 			continue
 		}
 

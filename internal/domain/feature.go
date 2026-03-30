@@ -64,19 +64,73 @@ type E2ECoverage struct {
 	Mobile *E2ECoverageEntry `yaml:"mobile,omitempty"`
 }
 
+// TestEntry represents a test file and its individual test functions.
+type TestEntry struct {
+	File      string          `yaml:"file"`
+	Functions []FunctionEntry `yaml:"functions,omitempty"`
+}
+
+// FunctionEntry represents a single test function with its run command.
+type FunctionEntry struct {
+	Name string `yaml:"name"`
+	Run  string `yaml:"run"`
+}
+
 // CoverageEntry represents a single coverage record for unit or integration tests.
 type CoverageEntry struct {
-	Status Status   `yaml:"status"`
-	Files  []string `yaml:"files,omitempty"`
-	Mocked bool     `yaml:"mocked"`
+	Status Status      `yaml:"status"`
+	Mocked bool        `yaml:"mocked"`
+	Tests  []TestEntry `yaml:"tests,omitempty"`
+	// Deprecated: use Tests instead. Kept for backward compatibility during migration.
+	Files []string `yaml:"files,omitempty"`
 }
 
 // E2ECoverageEntry represents a coverage record for end-to-end tests, including run history.
 type E2ECoverageEntry struct {
-	Status   Status   `yaml:"status"`
-	Files    []string `yaml:"files,omitempty"`
-	LastRun  string   `yaml:"last_run,omitempty"`
-	PassRate float64  `yaml:"pass_rate,omitempty"`
+	Status   Status      `yaml:"status"`
+	Tests    []TestEntry `yaml:"tests,omitempty"`
+	LastRun  string      `yaml:"last_run,omitempty"`
+	PassRate float64     `yaml:"pass_rate,omitempty"`
+	// Deprecated: use Tests instead. Kept for backward compatibility during migration.
+	Files []string `yaml:"files,omitempty"`
+}
+
+// AllFiles returns all file paths from both Tests and the deprecated Files field.
+func (e *CoverageEntry) AllFiles() []string {
+	seen := make(map[string]bool)
+	var result []string
+	for _, t := range e.Tests {
+		if !seen[t.File] {
+			seen[t.File] = true
+			result = append(result, t.File)
+		}
+	}
+	for _, f := range e.Files {
+		if !seen[f] {
+			seen[f] = true
+			result = append(result, f)
+		}
+	}
+	return result
+}
+
+// AllFiles returns all file paths from both Tests and the deprecated Files field.
+func (e *E2ECoverageEntry) AllFiles() []string {
+	seen := make(map[string]bool)
+	var result []string
+	for _, t := range e.Tests {
+		if !seen[t.File] {
+			seen[t.File] = true
+			result = append(result, t.File)
+		}
+	}
+	for _, f := range e.Files {
+		if !seen[f] {
+			seen[f] = true
+			result = append(result, f)
+		}
+	}
+	return result
 }
 
 // AllCoverageEntries returns a map of path -> status for every non-nil coverage slot.

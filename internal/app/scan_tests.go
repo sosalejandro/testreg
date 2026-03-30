@@ -2,11 +2,14 @@ package app
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/sosalejandro/testreg/internal/adapters"
 	"github.com/sosalejandro/testreg/internal/domain"
 	"github.com/sosalejandro/testreg/internal/ports"
+	"gopkg.in/yaml.v3"
 )
 
 // ScanTestsUseCase discovers test files and maps them to features in the registry.
@@ -37,14 +40,15 @@ func NewScanTestsUseCase(reader ports.RegistryReader, writer ports.RegistryWrite
 	return &ScanTestsUseCase{reader: reader, writer: writer, scanners: scanners}
 }
 
-// Execute runs all scanners against the project root and updates the registry.
+// Execute runs annotation-based scanning against the project root and updates the registry.
+// Files with @testreg annotations are mapped to features; files without are written to _unmapped.yaml.
 func (uc *ScanTestsUseCase) Execute(projectRoot, registryDir string) (*ScanResult, error) {
 	registry, err := uc.reader.LoadAll(registryDir)
 	if err != nil {
 		return nil, fmt.Errorf("loading registry from %s: %w", registryDir, err)
 	}
 
-	// Gather all discovered tests from all scanners
+	// Phase 1: Discover all test files using scanners
 	var allTests []ports.DiscoveredTest
 	for _, scanner := range uc.scanners {
 		tests, scanErr := scanner.Scan(projectRoot)
@@ -56,39 +60,310 @@ func (uc *ScanTestsUseCase) Execute(projectRoot, registryDir string) (*ScanResul
 
 	result := &ScanResult{TotalTests: len(allTests)}
 
-	// Build lookup index: file path -> feature pointer
-	fileIndex := buildFileIndex(registry)
-
-	// Build keyword index for fuzzy matching
-	keywordIndex := buildKeywordIndex(registry)
+	// Phase 2: Parse annotations for each discovered test file
+	var mappedAnnotations []*adapters.AnnotatedTest
+	var unmappedAnnotations []*adapters.AnnotatedTest
 
 	for _, test := range allTests {
-		featureID := matchTestToFeature(test, fileIndex, keywordIndex)
-		if featureID != "" {
-			result.Mapped = append(result.Mapped, MappedTest{Test: test, FeatureID: featureID})
-			result.MappedTests++
+		absPath := filepath.Join(projectRoot, test.FilePath)
 
-			// Update the feature's coverage
-			updateFeatureCoverage(registry, featureID, test)
+		// Try to parse annotations
+		annotated, parseErr := adapters.ParseAnnotatedFile(absPath, test.FilePath)
+		if parseErr != nil {
+			// Skip files that can't be parsed (binary, permission errors, etc.)
+			continue
+		}
+
+		if annotated != nil && len(annotated.FeatureIDs) > 0 {
+			// File has @testreg annotations - it's mapped
+			mappedAnnotations = append(mappedAnnotations, annotated)
+			for _, featureID := range annotated.FeatureIDs {
+				result.Mapped = append(result.Mapped, MappedTest{
+					Test:      test,
+					FeatureID: featureID,
+				})
+			}
+			result.MappedTests++
 		} else {
+			// No annotations - try unmapped extraction
+			unmapped, unmapErr := adapters.ParseAnnotatedFileForUnmapped(absPath, test.FilePath)
+			if unmapErr != nil {
+				continue
+			}
+			if unmapped != nil {
+				unmappedAnnotations = append(unmappedAnnotations, unmapped)
+			}
 			result.Unmapped = append(result.Unmapped, test)
 			result.UnmappedTests++
 		}
 	}
 
-	// Save updated registry
+	// Phase 3: Update registry with mapped annotations
+	for _, ann := range mappedAnnotations {
+		updateRegistryFromAnnotation(registry, ann)
+	}
+
+	// Phase 4: Save updated registry
 	if err := uc.writer.SaveAll(registryDir, registry); err != nil {
 		return nil, fmt.Errorf("saving updated registry: %w", err)
 	}
 
-	// Save unmapped tests for manual review
-	if len(result.Unmapped) > 0 {
+	// Phase 5: Save unmapped tests
+	if len(unmappedAnnotations) > 0 {
+		if err := saveAnnotatedUnmapped(registryDir, unmappedAnnotations); err != nil {
+			return nil, fmt.Errorf("saving unmapped tests: %w", err)
+		}
+	} else if len(result.Unmapped) > 0 {
+		// Fallback: save basic unmapped info
 		if err := saveUnmappedTests(uc.writer, registryDir, result.Unmapped); err != nil {
 			return nil, fmt.Errorf("saving unmapped tests: %w", err)
 		}
 	}
 
 	return result, nil
+}
+
+// updateRegistryFromAnnotation applies an annotated test's data to the registry.
+func updateRegistryFromAnnotation(reg *domain.Registry, ann *adapters.AnnotatedTest) {
+	for _, featureID := range ann.FeatureIDs {
+		feature, err := reg.GetFeature(featureID)
+		if err != nil {
+			continue // Feature not in registry
+		}
+
+		// Build TestEntry from the annotation
+		testEntry := domain.TestEntry{
+			File: ann.FilePath,
+		}
+		for _, fn := range ann.Functions {
+			runCmd := domain.GenerateRunCommand(ann.Framework, ann.TestType, ann.FilePath, fn.Name)
+			testEntry.Functions = append(testEntry.Functions, domain.FunctionEntry{
+				Name: fn.Name,
+				Run:  runCmd,
+			})
+		}
+
+		// Determine mocked status from flags
+		isMocked := domain.HasFlag(ann.Flags, "#mocked")
+
+		// Apply to the appropriate coverage entry
+		applyCoverageFromAnnotation(feature, ann.TestType, ann.Platform, testEntry, isMocked)
+	}
+
+	// Also handle function-level feature overrides
+	for _, fn := range ann.Functions {
+		for _, featureID := range fn.FeatureIDs {
+			// Skip if already covered by file-level annotation
+			alreadyCovered := false
+			for _, fileID := range ann.FeatureIDs {
+				if fileID == featureID {
+					alreadyCovered = true
+					break
+				}
+			}
+			if alreadyCovered {
+				continue
+			}
+
+			feature, err := reg.GetFeature(featureID)
+			if err != nil {
+				continue
+			}
+
+			testEntry := domain.TestEntry{
+				File: ann.FilePath,
+				Functions: []domain.FunctionEntry{
+					{
+						Name: fn.Name,
+						Run:  domain.GenerateRunCommand(ann.Framework, ann.TestType, ann.FilePath, fn.Name),
+					},
+				},
+			}
+
+			isMocked := domain.HasFlag(fn.Flags, "#mocked")
+			applyCoverageFromAnnotation(feature, ann.TestType, ann.Platform, testEntry, isMocked)
+		}
+	}
+}
+
+// applyCoverageFromAnnotation adds a test entry to the right coverage slot on a feature.
+func applyCoverageFromAnnotation(feature *domain.Feature, testType, platform string, testEntry domain.TestEntry, isMocked bool) {
+	switch {
+	case testType == "unit" && platform == "backend":
+		if feature.Coverage.Unit.Backend == nil {
+			feature.Coverage.Unit.Backend = &domain.CoverageEntry{Status: domain.StatusMissing}
+		}
+		addTestEntryAndUpdate(feature.Coverage.Unit.Backend, testEntry, isMocked)
+
+	case testType == "unit" && platform == "web":
+		if feature.Coverage.Unit.Web == nil {
+			feature.Coverage.Unit.Web = &domain.CoverageEntry{Status: domain.StatusMissing}
+		}
+		addTestEntryAndUpdate(feature.Coverage.Unit.Web, testEntry, isMocked)
+
+	case testType == "unit" && platform == "mobile":
+		if feature.Coverage.Unit.Mobile == nil {
+			feature.Coverage.Unit.Mobile = &domain.CoverageEntry{Status: domain.StatusMissing}
+		}
+		addTestEntryAndUpdate(feature.Coverage.Unit.Mobile, testEntry, isMocked)
+
+	case testType == "integration" && platform == "backend":
+		if feature.Coverage.Integration.Backend == nil {
+			feature.Coverage.Integration.Backend = &domain.CoverageEntry{Status: domain.StatusMissing}
+		}
+		addTestEntryAndUpdate(feature.Coverage.Integration.Backend, testEntry, isMocked)
+
+	case testType == "integration" && platform == "mobile":
+		if feature.Coverage.Integration.Mobile == nil {
+			feature.Coverage.Integration.Mobile = &domain.CoverageEntry{Status: domain.StatusMissing}
+		}
+		addTestEntryAndUpdate(feature.Coverage.Integration.Mobile, testEntry, isMocked)
+
+	case testType == "e2e" && platform == "web":
+		if feature.Coverage.E2E.Web == nil {
+			feature.Coverage.E2E.Web = &domain.E2ECoverageEntry{Status: domain.StatusMissing}
+		}
+		addTestEntryAndUpdateE2E(feature.Coverage.E2E.Web, testEntry)
+
+	case testType == "e2e" && platform == "mobile":
+		if feature.Coverage.E2E.Mobile == nil {
+			feature.Coverage.E2E.Mobile = &domain.E2ECoverageEntry{Status: domain.StatusMissing}
+		}
+		addTestEntryAndUpdateE2E(feature.Coverage.E2E.Mobile, testEntry)
+	}
+}
+
+// addTestEntryAndUpdate adds a test entry to a coverage entry, deduplicating by file,
+// and updates status from missing to covered.
+func addTestEntryAndUpdate(entry *domain.CoverageEntry, testEntry domain.TestEntry, isMocked bool) {
+	// Deduplicate by file path
+	for i, existing := range entry.Tests {
+		if existing.File == testEntry.File {
+			// Merge functions
+			entry.Tests[i].Functions = mergeFunctions(existing.Functions, testEntry.Functions)
+			entry.Mocked = isMocked
+			if entry.Status == domain.StatusMissing {
+				entry.Status = domain.StatusCovered
+			}
+			return
+		}
+	}
+
+	entry.Tests = append(entry.Tests, testEntry)
+	entry.Mocked = isMocked
+
+	if entry.Status == domain.StatusMissing {
+		entry.Status = domain.StatusCovered
+	}
+}
+
+// addTestEntryAndUpdateE2E adds a test entry to an E2E coverage entry.
+func addTestEntryAndUpdateE2E(entry *domain.E2ECoverageEntry, testEntry domain.TestEntry) {
+	for i, existing := range entry.Tests {
+		if existing.File == testEntry.File {
+			entry.Tests[i].Functions = mergeFunctions(existing.Functions, testEntry.Functions)
+			if entry.Status == domain.StatusMissing {
+				entry.Status = domain.StatusCovered
+			}
+			return
+		}
+	}
+
+	entry.Tests = append(entry.Tests, testEntry)
+
+	if entry.Status == domain.StatusMissing {
+		entry.Status = domain.StatusCovered
+	}
+}
+
+// mergeFunctions combines two function slices, deduplicating by name.
+func mergeFunctions(existing, newFns []domain.FunctionEntry) []domain.FunctionEntry {
+	seen := make(map[string]bool, len(existing))
+	for _, fn := range existing {
+		seen[fn.Name] = true
+	}
+	result := make([]domain.FunctionEntry, len(existing))
+	copy(result, existing)
+	for _, fn := range newFns {
+		if !seen[fn.Name] {
+			result = append(result, fn)
+			seen[fn.Name] = true
+		}
+	}
+	return result
+}
+
+// unmappedEntry represents a single entry in the _unmapped.yaml file.
+type unmappedEntry struct {
+	File      string   `yaml:"file"`
+	Type      string   `yaml:"type"`
+	Platform  string   `yaml:"platform"`
+	Framework string   `yaml:"framework"`
+	Functions []string `yaml:"functions,omitempty"`
+}
+
+// unmappedFile represents the structure of _unmapped.yaml.
+type unmappedFile struct {
+	Unmapped []unmappedEntry `yaml:"unmapped"`
+}
+
+// saveAnnotatedUnmapped writes unmapped tests with function detail to _unmapped.yaml.
+func saveAnnotatedUnmapped(registryDir string, unmapped []*adapters.AnnotatedTest) error {
+	data := unmappedFile{}
+
+	for _, ann := range unmapped {
+		entry := unmappedEntry{
+			File:      ann.FilePath,
+			Type:      ann.TestType,
+			Platform:  ann.Platform,
+			Framework: ann.Framework,
+		}
+		for _, fn := range ann.Functions {
+			entry.Functions = append(entry.Functions, fn.Name)
+		}
+		data.Unmapped = append(data.Unmapped, entry)
+	}
+
+	content, err := yaml.Marshal(data)
+	if err != nil {
+		return fmt.Errorf("marshaling unmapped data: %w", err)
+	}
+
+	header := "# Files without @testreg annotations\n# Add annotations to these files to include them in the registry\n"
+	filePath := filepath.Join(registryDir, "_unmapped.yaml")
+
+	if err := os.MkdirAll(registryDir, 0o755); err != nil {
+		return fmt.Errorf("creating directory %s: %w", registryDir, err)
+	}
+
+	if err := os.WriteFile(filePath, []byte(header+string(content)), 0o644); err != nil {
+		return fmt.Errorf("writing %s: %w", filePath, err)
+	}
+
+	return nil
+}
+
+// saveUnmappedTests writes unmapped tests to a _unmapped.yaml file using the legacy format.
+// This is the backward-compatible fallback when annotation parsing is not available.
+func saveUnmappedTests(writer ports.RegistryWriter, registryDir string, unmapped []ports.DiscoveredTest) error {
+	features := make([]domain.Feature, 0, len(unmapped))
+	for _, t := range unmapped {
+		features = append(features, domain.Feature{
+			ID:          fmt.Sprintf("unmapped.%s", filepath.Base(t.FilePath)),
+			Name:        fmt.Sprintf("Unmapped: %s", t.FilePath),
+			Description: fmt.Sprintf("Discovered by %s scanner, needs manual mapping", t.Framework),
+			Priority:    domain.PriorityLow,
+			Notes:       fmt.Sprintf("type=%s platform=%s framework=%s", t.TestType, t.Platform, t.Framework),
+		})
+	}
+
+	df := &domain.DomainFile{
+		Domain:      "_unmapped",
+		Description: "Tests discovered by scan that could not be automatically mapped to features. Review and move to appropriate domain files.",
+		Features:    features,
+	}
+
+	return writer.SaveDomain(registryDir, df)
 }
 
 // buildFileIndex maps every file path already in the registry to its feature ID.
@@ -109,12 +384,12 @@ func collectAllFiles(f *domain.Feature) []string {
 	var files []string
 	appendFiles := func(entry *domain.CoverageEntry) {
 		if entry != nil {
-			files = append(files, entry.Files...)
+			files = append(files, entry.AllFiles()...)
 		}
 	}
 	appendE2EFiles := func(entry *domain.E2ECoverageEntry) {
 		if entry != nil {
-			files = append(files, entry.Files...)
+			files = append(files, entry.AllFiles()...)
 		}
 	}
 
@@ -276,27 +551,4 @@ func addFileAndUpdateE2EStatus(entry *domain.E2ECoverageEntry, filePath string) 
 	if entry.Status == domain.StatusMissing {
 		entry.Status = domain.StatusCovered
 	}
-}
-
-// saveUnmappedTests writes unmapped tests to a special _unmapped.yaml file
-// for manual review and categorization.
-func saveUnmappedTests(writer ports.RegistryWriter, registryDir string, unmapped []ports.DiscoveredTest) error {
-	features := make([]domain.Feature, 0, len(unmapped))
-	for _, t := range unmapped {
-		features = append(features, domain.Feature{
-			ID:          fmt.Sprintf("unmapped.%s", filepath.Base(t.FilePath)),
-			Name:        fmt.Sprintf("Unmapped: %s", t.FilePath),
-			Description: fmt.Sprintf("Discovered by %s scanner, needs manual mapping", t.Framework),
-			Priority:    domain.PriorityLow,
-			Notes:       fmt.Sprintf("type=%s platform=%s framework=%s", t.TestType, t.Platform, t.Framework),
-		})
-	}
-
-	df := &domain.DomainFile{
-		Domain:      "_unmapped",
-		Description: "Tests discovered by scan that could not be automatically mapped to features. Review and move to appropriate domain files.",
-		Features:    features,
-	}
-
-	return writer.SaveDomain(registryDir, df)
 }
