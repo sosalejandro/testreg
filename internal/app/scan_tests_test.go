@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/sosalejandro/testreg/internal/adapters"
+	"github.com/sosalejandro/testreg/internal/domain"
 	"github.com/sosalejandro/testreg/internal/ports"
 )
 
@@ -204,5 +205,135 @@ func createTestFile(t *testing.T, root, relPath, content string) {
 	}
 	if err := os.WriteFile(fullPath, []byte(content), 0o644); err != nil {
 		t.Fatalf("WriteFile(%s) error = %v", fullPath, err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Tests for auto-mapping by directory proximity
+// ---------------------------------------------------------------------------
+
+func TestBuildFeatureDirIndex(t *testing.T) {
+	registry := &domain.Registry{
+		Domains: []domain.DomainFile{
+			{Domain: "auth", Features: []domain.Feature{
+				{ID: "auth.login"}, {ID: "auth.register"},
+			}},
+			{Domain: "enroll", Features: []domain.Feature{
+				{ID: "enroll.create"}, {ID: "enroll.list"},
+			}},
+		},
+	}
+
+	index := buildFeatureDirIndex(registry)
+
+	if len(index) != 2 {
+		t.Fatalf("expected 2 domains in index, got %d", len(index))
+	}
+	if len(index["auth"]) != 2 {
+		t.Errorf("auth features = %d, want 2", len(index["auth"]))
+	}
+	if len(index["enroll"]) != 2 {
+		t.Errorf("enroll features = %d, want 2", len(index["enroll"]))
+	}
+}
+
+func TestBuildFeatureDirIndex_Empty(t *testing.T) {
+	index := buildFeatureDirIndex(&domain.Registry{})
+	if len(index) != 0 {
+		t.Errorf("expected empty index, got %d entries", len(index))
+	}
+}
+
+func TestAutoMapByProximity_DirectoryMatch(t *testing.T) {
+	index := map[string][]string{
+		"auth":   {"auth.login", "auth.register"},
+		"enroll": {"enroll.create"},
+	}
+
+	tests := []struct {
+		path     string
+		wantIDs  []string
+		wantNone bool
+	}{
+		// Strategy 1: exact directory segment match
+		{"server/modules/auth/auth_test.go", []string{"auth.login", "auth.register"}, false},
+		{"server/modules/interactions/enroll/enroll_test.go", []string{"enroll.create"}, false},
+		{"internal/auth/service_test.go", []string{"auth.login", "auth.register"}, false},
+
+		// Strategy 2: path substring match
+		{"client/src/features/auth/Login.test.tsx", []string{"auth.login", "auth.register"}, false},
+
+		// No match
+		{"server/middlewares/ratelimit_test.go", nil, true},
+		{"tests/something_test.go", nil, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.path, func(t *testing.T) {
+			got := autoMapByProximity(tt.path, index)
+			if tt.wantNone {
+				if got != nil {
+					t.Errorf("expected nil, got %v", got)
+				}
+				return
+			}
+			if len(got) != len(tt.wantIDs) {
+				t.Errorf("got %d features %v, want %d %v", len(got), got, len(tt.wantIDs), tt.wantIDs)
+			}
+		})
+	}
+}
+
+func TestAutoMapByProximity_EmptyIndex(t *testing.T) {
+	got := autoMapByProximity("server/auth/auth_test.go", nil)
+	if got != nil {
+		t.Errorf("expected nil for empty index, got %v", got)
+	}
+
+	got = autoMapByProximity("server/auth/auth_test.go", map[string][]string{})
+	if got != nil {
+		t.Errorf("expected nil for empty map, got %v", got)
+	}
+}
+
+func TestAutoMapByProximity_NearestDirectoryWins(t *testing.T) {
+	// If a path has multiple matching segments, the deepest (nearest) wins.
+	index := map[string][]string{
+		"modules": {"modules.something"},
+		"auth":    {"auth.login"},
+	}
+
+	// "auth" is deeper than "modules" in this path
+	got := autoMapByProximity("server/modules/auth/auth_test.go", index)
+	if len(got) == 0 {
+		t.Fatal("expected match, got nil")
+	}
+	if got[0] != "auth.login" {
+		t.Errorf("expected nearest match 'auth.login', got %v", got)
+	}
+}
+
+func TestAutoMapByProximity_CrossFramework(t *testing.T) {
+	// Same domain matching works regardless of framework/language.
+	index := map[string][]string{
+		"auth": {"auth.login"},
+	}
+
+	paths := []string{
+		"server/modules/auth/auth_test.go",           // Go/Echo
+		"src/handlers/auth/auth_handler_test.go",      // Go/Chi
+		"internal/auth/service_test.go",               // Go/stdlib
+		"client/src/features/auth/Login.test.tsx",     // React/Vitest
+		"tests/auth/test_login.py",                    // Python/pytest
+		"apps/web/src/auth/auth.spec.ts",              // Playwright
+	}
+
+	for _, p := range paths {
+		t.Run(p, func(t *testing.T) {
+			got := autoMapByProximity(p, index)
+			if len(got) == 0 {
+				t.Errorf("expected auth match for %s, got nil", p)
+			}
+		})
 	}
 }
