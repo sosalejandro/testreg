@@ -84,8 +84,16 @@ func (uc *AuditFeatureUseCase) Execute(registryDir, featureID string, config por
 	e2eWeb := buildE2ECoverageStatus(feature.Coverage.E2E.Web)
 	e2eMobile := buildE2ECoverageStatus(feature.Coverage.E2E.Mobile)
 
-	// Step 8: Calculate health score as weighted average of layer coverage.
-	healthScore := calculateHealthScore(layerCoverage)
+	// Step 8: Calculate health score.
+	// If graph tracing produced annotated nodes, use the weighted layer average.
+	// If not (CLI tools, libraries, or features without API surfaces), fall back
+	// to the registry's coverage entries — the same data that `testreg status` uses.
+	var healthScore float64
+	if len(allNodes) > 0 {
+		healthScore = calculateHealthScore(layerCoverage)
+	} else {
+		healthScore = registryBasedHealth(feature)
+	}
 
 	// Step 9: Analyze performance testing gaps.
 	perfGaps, perfScore := analyzePerformanceGaps(allNodes, config.ProjectRoot)
@@ -107,6 +115,28 @@ func (uc *AuditFeatureUseCase) Execute(registryDir, featureID string, config por
 		E2EMobile:      e2eMobile,
 		HealthScore:    healthScore,
 	}, nil
+}
+
+// registryBasedHealth computes a health score from the feature's coverage entries
+// in the registry YAML. Used as a fallback when graph tracing produces no nodes
+// (CLI tools, libraries, event-driven apps without API surfaces).
+//
+// The score is the fraction of non-nil coverage entries with status "covered" or
+// "partial". This is the same data source that `testreg status` reads.
+func registryBasedHealth(feature *domain.Feature) float64 {
+	entries := feature.AllCoverageEntries()
+	if len(entries) == 0 {
+		return 0.0
+	}
+
+	covered := 0
+	for _, status := range entries {
+		if status.IsCovered() || status == domain.StatusPartial {
+			covered++
+		}
+	}
+
+	return float64(covered) / float64(len(entries))
 }
 
 // ExecuteAll generates a summary report for all features.

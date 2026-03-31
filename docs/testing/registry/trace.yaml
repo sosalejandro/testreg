@@ -235,6 +235,16 @@ features:
                   run: go test -run TestRouteParser_InlineFuncHandler ./internal/adapters/...
                 - name: TestJoinPath
                   run: go test -run TestJoinPath ./internal/adapters/...
+                - name: TestParseStdlibHandleFunc
+                  run: go test -run TestParseStdlibHandleFunc ./internal/adapters/...
+                - name: TestParseStdlibHandle
+                  run: go test -run TestParseStdlibHandle ./internal/adapters/...
+                - name: TestParseGo122PatternRouting
+                  run: go test -run TestParseGo122PatternRouting ./internal/adapters/...
+                - name: TestParseStdlibPackageLevel
+                  run: go test -run TestParseStdlibPackageLevel ./internal/adapters/...
+                - name: TestParseHandlerUnwrapping
+                  run: go test -run TestParseHandlerUnwrapping ./internal/adapters/...
           files:
             - internal/adapters/route_parser_test.go
       integration: {}
@@ -337,6 +347,55 @@ features:
     description: TypeScript AST scanning for React routes, hooks, and API services
     roles: []
     priority: medium
+    surfaces: {}
+    coverage:
+      unit:
+        backend:
+          status: missing
+          mocked: false
+      integration: {}
+      e2e: {}
+  - id: trace.fx-resolver
+    name: Uber Fx/Dig Resolver
+    description: Parse fx.Provide(), fx.Options(), dig.Provide() for interface-to-concrete DI bindings
+    roles: []
+    priority: high
+    surfaces: {}
+    coverage:
+      unit:
+        backend:
+          status: covered
+          mocked: false
+          tests:
+            - file: internal/adapters/fx_resolver_test.go
+              functions:
+                - name: TestFxResolver_ResolveFromSource_FxProvide
+                  run: go test -run TestFxResolver_ResolveFromSource_FxProvide ./internal/adapters/...
+                - name: TestFxResolver_ResolveFromSource_FxOptionsNesting
+                  run: go test -run TestFxResolver_ResolveFromSource_FxOptionsNesting ./internal/adapters/...
+                - name: TestFxResolver_ResolveFromSource_FxInvoke
+                  run: go test -run TestFxResolver_ResolveFromSource_FxInvoke ./internal/adapters/...
+                - name: TestFxResolver_ResolveFromSource_ProviderReturnsPointer
+                  run: go test -run TestFxResolver_ResolveFromSource_ProviderReturnsPointer ./internal/adapters/...
+                - name: TestFxResolver_ResolveFromSource_DigProvide
+                  run: go test -run TestFxResolver_ResolveFromSource_DigProvide ./internal/adapters/...
+                - name: TestFxResolver_ResolveFromSource_EmptyNoFxCalls
+                  run: go test -run TestFxResolver_ResolveFromSource_EmptyNoFxCalls ./internal/adapters/...
+                - name: TestFxResolver_ResolveFromSource_InvalidSource
+                  run: go test -run TestFxResolver_ResolveFromSource_InvalidSource ./internal/adapters/...
+                - name: TestFxResolver_Resolve_MultiFileDirectory
+                  run: go test -run TestFxResolver_Resolve_MultiFileDirectory ./internal/adapters/...
+                - name: TestFxResolver_Resolve_EmptyDirectory
+                  run: go test -run TestFxResolver_Resolve_EmptyDirectory ./internal/adapters/...
+                - name: TestFxResolver_Resolve_FxNewComposition
+                  run: go test -run TestFxResolver_Resolve_FxNewComposition ./internal/adapters/...
+      integration: {}
+      e2e: {}
+  - id: trace.stdlib-router
+    name: stdlib net/http Router
+    description: Parse mux.HandleFunc(), mux.Handle(), Go 1.22+ pattern routing
+    roles: []
+    priority: high
     surfaces: {}
     coverage:
       unit:
