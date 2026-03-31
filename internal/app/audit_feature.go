@@ -226,6 +226,8 @@ func registryBasedPerfAnalysis(feature *domain.Feature, projectRoot string) ([]d
 }
 
 // ExecuteAll generates a summary report for all features.
+// Optimized: builds the full call graph once, then traces each feature
+// against the shared graph instead of rebuilding per feature.
 func (uc *AuditFeatureUseCase) ExecuteAll(registryDir string, config ports.GraphConfig) ([]*domain.AuditOutput, error) {
 	reg, err := uc.registry.LoadAll(registryDir)
 	if err != nil {
@@ -237,12 +239,114 @@ func (uc *AuditFeatureUseCase) ExecuteAll(registryDir string, config ports.Graph
 		return nil, nil
 	}
 
+	// Build the full graph ONCE (all phases: SQLC, routes, functions, calls, frontend).
+	// This avoids rebuilding the AST for each of the N features.
+	fullGraph, err := uc.traceUC.BuildGraph(config)
+	if err != nil {
+		// Fall back to per-feature builds if full graph fails.
+		fmt.Fprintf(os.Stderr, "warning: full graph build failed, falling back to per-feature: %v\n", err)
+		return uc.executeAllPerFeature(registryDir, features, config)
+	}
+
+	maxDepth := config.MaxDepth
+	if maxDepth <= 0 {
+		maxDepth = 10
+	}
+
+	results := make([]*domain.AuditOutput, 0, len(features))
+	for _, f := range features {
+		output := uc.auditFeatureWithGraph(&f, fullGraph, maxDepth, config.ProjectRoot)
+		results = append(results, output)
+	}
+
+	// Sort by health score ascending (worst first).
+	sort.Slice(results, func(i, j int) bool {
+		return results[i].HealthScore < results[j].HealthScore
+	})
+
+	return results, nil
+}
+
+// auditFeatureWithGraph audits a single feature against a pre-built graph.
+// This is the fast path used by ExecuteAll — no graph rebuild per feature.
+func (uc *AuditFeatureUseCase) auditFeatureWithGraph(feature *domain.Feature, graph *domain.Graph, maxDepth int, projectRoot string) *domain.AuditOutput {
+	// Derive entry points from API surfaces.
+	entryPoints := deriveEntryPoints(feature)
+
+	// Collect test files from registry.
+	knownTestFiles := collectTestFiles(feature)
+	testFileDirs := buildTestFileIndex(knownTestFiles)
+
+	// Trace from each entry point into the shared graph.
+	var traceResults []*domain.TraceResult
+	for _, ep := range entryPoints {
+		tr := graph.TraceFrom(ep, maxDepth)
+		traceResults = append(traceResults, tr)
+	}
+
+	// Walk trace trees and annotate nodes.
+	var allNodes []domain.AnnotatedNode
+	for _, tr := range traceResults {
+		if tr == nil || tr.Root == nil {
+			continue
+		}
+		walkAndAnnotate(tr.Root, testFileDirs, &allNodes, make(map[string]bool))
+	}
+	allNodes = deduplicateNodes(allNodes)
+
+	// Coverage, gaps, actions.
+	layerCoverage := computeLayerCoverage(allNodes)
+	gaps := identifyGaps(allNodes)
+	actions := generateAuditActions(gaps, feature)
+	e2eWeb := buildE2ECoverageStatus(feature.Coverage.E2E.Web)
+	e2eMobile := buildE2ECoverageStatus(feature.Coverage.E2E.Mobile)
+
+	// Health score with registry fallback.
+	var healthScore float64
+	if len(allNodes) > 0 {
+		healthScore = calculateHealthScore(layerCoverage)
+	} else {
+		healthScore = registryBasedHealth(feature)
+	}
+
+	// Performance analysis with registry fallback.
+	var perfGaps []domain.PerfGap
+	var perfScore *domain.PerfScore
+	if len(allNodes) > 0 {
+		perfGaps, perfScore = analyzePerformanceGaps(allNodes, projectRoot)
+	} else {
+		perfGaps, perfScore = registryBasedPerfAnalysis(feature, projectRoot)
+	}
+
+	// Build API surfaces from feature definition.
+	apiSurfaces := feature.Surfaces.API
+
+	return &domain.AuditOutput{
+		FeatureID:      feature.ID,
+		FeatureName:    feature.Name,
+		Priority:       string(feature.Priority),
+		TraceResults:   traceResults,
+		APISurfaces:    apiSurfaces,
+		TestFiles:      knownTestFiles,
+		LayerCoverage:  layerCoverage,
+		AnnotatedNodes: allNodes,
+		Gaps:           gaps,
+		Actions:        actions,
+		PerfGaps:       perfGaps,
+		PerfScore:      perfScore,
+		E2EWeb:         e2eWeb,
+		E2EMobile:      e2eMobile,
+		HealthScore:    healthScore,
+	}
+}
+
+// executeAllPerFeature is the fallback when the full graph build fails.
+// It builds a separate graph per feature (the old slow path).
+func (uc *AuditFeatureUseCase) executeAllPerFeature(registryDir string, features []domain.Feature, config ports.GraphConfig) ([]*domain.AuditOutput, error) {
 	results := make([]*domain.AuditOutput, 0, len(features))
 	for _, f := range features {
 		output, err := uc.Execute(registryDir, f.ID, config)
 		if err != nil {
-			// Log the error but continue with other features.
-			// Create a minimal output with zero health score.
 			results = append(results, &domain.AuditOutput{
 				FeatureID:   f.ID,
 				FeatureName: f.Name,
@@ -254,7 +358,6 @@ func (uc *AuditFeatureUseCase) ExecuteAll(registryDir string, config ports.Graph
 		results = append(results, output)
 	}
 
-	// Sort by health score ascending (worst first).
 	sort.Slice(results, func(i, j int) bool {
 		return results[i].HealthScore < results[j].HealthScore
 	})

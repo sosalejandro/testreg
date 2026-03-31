@@ -32,6 +32,12 @@ func NewTraceFeatureUseCase(reader ports.RegistryReader, builder ports.GraphBuil
 	}
 }
 
+// BuildGraph constructs the full call graph for the project. Used by
+// ExecuteAll to build the graph once and trace each feature against it.
+func (uc *TraceFeatureUseCase) BuildGraph(config ports.GraphConfig) (*domain.Graph, error) {
+	return uc.graphBuilder.Build(config.ProjectRoot, config)
+}
+
 // Execute traces the dependency graph for a feature.
 //  1. Load the feature from the registry to get entry points.
 //  2. Build the graph from entry points (lazy mode via BuildFrom).
