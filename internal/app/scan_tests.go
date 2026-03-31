@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/sosalejandro/testreg/internal/adapters"
 	"github.com/sosalejandro/testreg/internal/domain"
@@ -48,14 +49,31 @@ func (uc *ScanTestsUseCase) Execute(projectRoot, registryDir string) (*ScanResul
 		return nil, fmt.Errorf("loading registry from %s: %w", registryDir, err)
 	}
 
-	// Phase 1: Discover all test files using scanners
+	// Phase 1: Discover all test files using scanners (parallel).
+	type scannerResult struct {
+		tests []ports.DiscoveredTest
+		err   error
+		name  string
+	}
+
+	results := make([]scannerResult, len(uc.scanners))
+	var wg sync.WaitGroup
+	for i, scanner := range uc.scanners {
+		wg.Add(1)
+		go func(idx int, sc ports.TestScanner) {
+			defer wg.Done()
+			tests, err := sc.Scan(projectRoot)
+			results[idx] = scannerResult{tests: tests, err: err, name: sc.Name()}
+		}(i, scanner)
+	}
+	wg.Wait()
+
 	var allTests []ports.DiscoveredTest
-	for _, scanner := range uc.scanners {
-		tests, scanErr := scanner.Scan(projectRoot)
-		if scanErr != nil {
-			return nil, fmt.Errorf("scanner %s failed: %w", scanner.Name(), scanErr)
+	for _, r := range results {
+		if r.err != nil {
+			return nil, fmt.Errorf("scanner %s failed: %w", r.name, r.err)
 		}
-		allTests = append(allTests, tests...)
+		allTests = append(allTests, r.tests...)
 	}
 
 	result := &ScanResult{TotalTests: len(allTests)}

@@ -26,6 +26,7 @@ type GraphSection struct {
 	IgnoreFunctions []string `yaml:"ignore_functions"`
 	CacheDir        string   `yaml:"cache_dir"`
 	MaxDepth        int      `yaml:"max_depth"`
+	Concurrency     int      `yaml:"concurrency"`
 }
 
 // configFileName is the expected configuration file name.
@@ -70,6 +71,7 @@ func (s *GraphSection) ToPortsConfig() ports.GraphConfig {
 		IgnoreFunctions: s.IgnoreFunctions,
 		CacheDir:        s.CacheDir,
 		MaxDepth:        s.MaxDepth,
+		Concurrency:     s.Concurrency,
 	}
 }
 

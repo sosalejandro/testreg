@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/sosalejandro/testreg/internal/domain"
 	"github.com/sosalejandro/testreg/internal/ports"
@@ -38,6 +39,7 @@ func NewGoASTScanner() *GoASTScanner {
 }
 
 // Build constructs the full call graph for the project rooted at projectRoot.
+// Frontend scanning runs concurrently with the Go AST phases via goroutines.
 func (s *GoASTScanner) Build(projectRoot string, config ports.GraphConfig) (*domain.Graph, error) {
 	ctx, err := s.newScanContext(projectRoot, config)
 	if err != nil {
@@ -46,49 +48,55 @@ func (s *GoASTScanner) Build(projectRoot string, config ports.GraphConfig) (*dom
 
 	backendAbs := filepath.Join(projectRoot, config.BackendRoot)
 
-	// Phase 0: Pre-resolution.
+	// Start frontend scan in parallel with Go phases.
+	var frontendResult *FrontendScanResult
+	var frontendErr error
+	var wg sync.WaitGroup
+
+	if len(config.FrontendRoots) > 0 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			frontendResult, frontendErr = s.scanFrontendParallel(projectRoot, config)
+		}()
+	}
+
+	// Go Phase 0: Pre-resolution.
 	if err := s.preResolve(ctx, projectRoot, config); err != nil {
-		// Non-fatal: degrade gracefully if SQLC config is missing.
 		_ = err
 	}
 
-	// Phase 1: Route discovery.
+	// Go Phase 1: Route discovery.
 	if config.RouterFile != "" {
 		if err := s.discoverRoutes(ctx, projectRoot, config); err != nil {
-			// Non-fatal: continue without route nodes.
 			_ = err
 		}
 	}
 
-	// Phase 2: Function discovery (all .go files under backend root).
-	// Also discovers @api annotations and creates endpoint nodes.
+	// Go Phase 2: Function discovery.
 	if err := s.discoverFunctions(ctx, backendAbs); err != nil {
 		return nil, fmt.Errorf("function discovery: %w", err)
 	}
 
-	// Phase 2.5: Resolve unresolved handler references from Phase 1.
+	// Go Phase 2.5: Resolve unresolved handler references.
 	s.resolveHandlerRefs(ctx)
 
-	// Phase 3: Call graph extraction.
+	// Go Phase 3: Call graph extraction.
 	s.extractCalls(ctx)
 
-	// Phase 4: Frontend graph (TypeScript scanner) — uses shared instance for caching.
-	if len(config.FrontendRoots) > 0 {
-		frontendResult, err := s.frontendScanner.Scan(projectRoot)
-		if err != nil {
-			// Non-fatal — log warning but continue with backend-only graph.
-			fmt.Fprintf(os.Stderr, "warning: frontend scan failed: %v\n", err)
-		} else {
-			s.frontendScanner.MergeIntoGraph(ctx.graph, frontendResult)
-		}
+	// Wait for frontend scan to complete and merge.
+	wg.Wait()
+	if frontendErr != nil {
+		fmt.Fprintf(os.Stderr, "warning: frontend scan failed: %v\n", frontendErr)
+	} else if frontendResult != nil {
+		s.frontendScanner.MergeIntoGraph(ctx.graph, frontendResult)
 	}
 
 	return ctx.graph, nil
 }
 
 // BuildFrom constructs a partial graph starting from specific entry points.
-// It is the lazy/efficient version: only files containing the named functions
-// and their transitive callees are parsed.
+// Frontend scanning runs concurrently with the Go AST phases via goroutines.
 func (s *GoASTScanner) BuildFrom(projectRoot string, entryPoints []string, config ports.GraphConfig) (*domain.Graph, error) {
 	ctx, err := s.newScanContext(projectRoot, config)
 	if err != nil {
@@ -97,45 +105,119 @@ func (s *GoASTScanner) BuildFrom(projectRoot string, entryPoints []string, confi
 
 	backendAbs := filepath.Join(projectRoot, config.BackendRoot)
 
-	// Phase 0: Pre-resolution (always needed for SQLC lookups).
+	// Start frontend scan in parallel with Go phases.
+	var frontendResult *FrontendScanResult
+	var frontendErr error
+	var wg sync.WaitGroup
+
+	if len(config.FrontendRoots) > 0 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			frontendResult, frontendErr = s.scanFrontendParallel(projectRoot, config)
+		}()
+	}
+
+	// Go Phase 0: Pre-resolution.
 	if err := s.preResolve(ctx, projectRoot, config); err != nil {
 		_ = err
 	}
 
-	// Phase 1: Route discovery.
+	// Go Phase 1: Route discovery.
 	if config.RouterFile != "" {
 		if err := s.discoverRoutes(ctx, projectRoot, config); err != nil {
 			_ = err
 		}
 	}
 
-	// Phase 2: Discover all functions so we can locate entry points.
-	// Also discovers @api annotations and creates endpoint nodes.
+	// Go Phase 2: Function discovery.
 	if err := s.discoverFunctions(ctx, backendAbs); err != nil {
 		return nil, fmt.Errorf("function discovery: %w", err)
 	}
 
-	// Phase 2.5: Resolve unresolved handler references from Phase 1.
+	// Go Phase 2.5: Resolve handler references.
 	s.resolveHandlerRefs(ctx)
 
-	// Phase 3: Extract calls only for the reachable subgraph.
+	// Go Phase 3: Extract calls for reachable subgraph only.
 	s.extractCallsFrom(ctx, entryPoints)
 
-	// Prune unreachable nodes from the graph.
+	// Prune unreachable nodes.
 	s.pruneUnreachable(ctx, entryPoints)
 
-	// Phase 4: Frontend graph (TypeScript scanner) — uses shared instance for caching.
-	if len(config.FrontendRoots) > 0 {
-		frontendResult, err := s.frontendScanner.Scan(projectRoot)
-		if err != nil {
-			// Non-fatal — log warning but continue with backend-only graph.
-			fmt.Fprintf(os.Stderr, "warning: frontend scan failed: %v\n", err)
-		} else {
-			s.frontendScanner.MergeIntoGraph(ctx.graph, frontendResult)
-		}
+	// Wait for frontend scan to complete and merge.
+	wg.Wait()
+	if frontendErr != nil {
+		fmt.Fprintf(os.Stderr, "warning: frontend scan failed: %v\n", frontendErr)
+	} else if frontendResult != nil {
+		s.frontendScanner.MergeIntoGraph(ctx.graph, frontendResult)
 	}
 
 	return ctx.graph, nil
+}
+
+// scanFrontendParallel scans each frontend_root as a separate goroutine,
+// each spawning its own Node.js subprocess. Results are merged into a single
+// FrontendScanResult. If multiple roots are configured, they run concurrently
+// bounded by the config's Concurrency setting.
+func (s *GoASTScanner) scanFrontendParallel(projectRoot string, config ports.GraphConfig) (*FrontendScanResult, error) {
+	if len(config.FrontendRoots) == 1 {
+		// Single root: no need for sub-goroutines.
+		return s.frontendScanner.Scan(projectRoot)
+	}
+
+	// Multiple roots: scan each concurrently.
+	type scanResult struct {
+		result *FrontendScanResult
+		err    error
+	}
+
+	concurrency := config.Concurrency
+	if concurrency <= 0 {
+		concurrency = 4
+	}
+
+	results := make(chan scanResult, len(config.FrontendRoots))
+	sem := make(chan struct{}, concurrency)
+
+	for _, root := range config.FrontendRoots {
+		sem <- struct{}{}
+		go func(dir string) {
+			defer func() { <-sem }()
+
+			// Create a temporary scanner (no shared cache) for parallel safety.
+			scanner := NewFrontendScanner()
+			r, err := scanner.Scan(projectRoot)
+			results <- scanResult{result: r, err: err}
+		}(root)
+	}
+
+	// Collect and merge.
+	merged := &FrontendScanResult{}
+	var firstErr error
+
+	for range config.FrontendRoots {
+		sr := <-results
+		if sr.err != nil {
+			if firstErr == nil {
+				firstErr = sr.err
+			}
+			fmt.Fprintf(os.Stderr, "warning: frontend scan failed for a root: %v\n", sr.err)
+			continue
+		}
+		if sr.result != nil {
+			merged.Nodes = append(merged.Nodes, sr.result.Nodes...)
+			merged.Edges = append(merged.Edges, sr.result.Edges...)
+			merged.Warnings = append(merged.Warnings, sr.result.Warnings...)
+			merged.Stats.FilesScanned += sr.result.Stats.FilesScanned
+			merged.Stats.RoutesFound += sr.result.Stats.RoutesFound
+			merged.Stats.APICallsFound += sr.result.Stats.APICallsFound
+		}
+	}
+
+	if len(merged.Nodes) == 0 && firstErr != nil {
+		return nil, firstErr
+	}
+	return merged, nil
 }
 
 // ---------------------------------------------------------------------------

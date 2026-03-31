@@ -13,4 +13,5 @@ type GraphConfig struct {
 	IgnoreFunctions []string
 	CacheDir        string
 	MaxDepth        int
+	Concurrency     int
 }
