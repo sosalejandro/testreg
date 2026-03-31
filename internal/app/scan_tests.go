@@ -78,22 +78,26 @@ func (uc *ScanTestsUseCase) Execute(projectRoot, registryDir string) (*ScanResul
 
 	result := &ScanResult{TotalTests: len(allTests)}
 
-	// Phase 2: Parse annotations for each discovered test file
+	// Build a feature-to-handler-path index for auto-mapping.
+	// Maps handler file directory → list of feature IDs.
+	featureByDir := buildFeatureDirIndex(registry)
+
+	// Phase 2: Parse annotations for each discovered test file.
+	// Priority: explicit @testreg annotations > auto-mapped by directory proximity.
 	var mappedAnnotations []*adapters.AnnotatedTest
 	var unmappedAnnotations []*adapters.AnnotatedTest
 
 	for _, test := range allTests {
 		absPath := filepath.Join(projectRoot, test.FilePath)
 
-		// Try to parse annotations
+		// Try to parse annotations first (explicit always wins).
 		annotated, parseErr := adapters.ParseAnnotatedFile(absPath, test.FilePath)
 		if parseErr != nil {
-			// Skip files that can't be parsed (binary, permission errors, etc.)
 			continue
 		}
 
 		if annotated != nil && len(annotated.FeatureIDs) > 0 {
-			// File has @testreg annotations - it's mapped
+			// File has @testreg annotations — it's mapped.
 			mappedAnnotations = append(mappedAnnotations, annotated)
 			for _, featureID := range annotated.FeatureIDs {
 				result.Mapped = append(result.Mapped, MappedTest{
@@ -103,16 +107,34 @@ func (uc *ScanTestsUseCase) Execute(projectRoot, registryDir string) (*ScanResul
 			}
 			result.MappedTests++
 		} else {
-			// No annotations - try unmapped extraction
-			unmapped, unmapErr := adapters.ParseAnnotatedFileForUnmapped(absPath, test.FilePath)
-			if unmapErr != nil {
-				continue
+			// No annotations — try auto-mapping by directory proximity.
+			autoFeatures := autoMapByProximity(test.FilePath, featureByDir)
+			if len(autoFeatures) > 0 {
+				// Auto-mapped: create a synthetic annotation.
+				unmapped, _ := adapters.ParseAnnotatedFileForUnmapped(absPath, test.FilePath)
+				if unmapped != nil {
+					unmapped.FeatureIDs = autoFeatures
+					mappedAnnotations = append(mappedAnnotations, unmapped)
+				}
+				for _, featureID := range autoFeatures {
+					result.Mapped = append(result.Mapped, MappedTest{
+						Test:      test,
+						FeatureID: featureID,
+					})
+				}
+				result.MappedTests++
+			} else {
+				// Truly unmapped — no annotations, no proximity match.
+				unmapped, unmapErr := adapters.ParseAnnotatedFileForUnmapped(absPath, test.FilePath)
+				if unmapErr != nil {
+					continue
+				}
+				if unmapped != nil {
+					unmappedAnnotations = append(unmappedAnnotations, unmapped)
+				}
+				result.Unmapped = append(result.Unmapped, test)
+				result.UnmappedTests++
 			}
-			if unmapped != nil {
-				unmappedAnnotations = append(unmappedAnnotations, unmapped)
-			}
-			result.Unmapped = append(result.Unmapped, test)
-			result.UnmappedTests++
 		}
 	}
 
@@ -569,4 +591,64 @@ func addFileAndUpdateE2EStatus(entry *domain.E2ECoverageEntry, filePath string) 
 	if entry.Status == domain.StatusMissing {
 		entry.Status = domain.StatusCovered
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Auto-mapping: match test files to features by directory proximity
+// ---------------------------------------------------------------------------
+
+// buildFeatureDirIndex creates a lookup from domain names to feature IDs.
+// Used by autoMapByProximity to match test file paths to features without annotations.
+func buildFeatureDirIndex(registry *domain.Registry) map[string][]string {
+	index := make(map[string][]string)
+	for _, df := range registry.Domains {
+		for _, f := range df.Features {
+			found := false
+			for _, existing := range index[df.Domain] {
+				if existing == f.ID {
+					found = true
+					break
+				}
+			}
+			if !found {
+				index[df.Domain] = append(index[df.Domain], f.ID)
+			}
+		}
+	}
+	return index
+}
+
+// autoMapByProximity matches a test file path to features by comparing
+// path segments against domain names in the feature registry.
+//
+// Strategy (priority order, nearest directory wins):
+//  1. Directory segment match: any directory in the test file's path matches a domain name
+//     "server/modules/auth/auth_test.go" → "auth" directory → auth.* features
+//  2. Path substring match: test file's path contains a domain name as a segment
+//     "client/src/features/grafo/EnrollDialog.test.tsx" → "enroll" in path → enroll.* features
+func autoMapByProximity(testFilePath string, featureByDir map[string][]string) []string {
+	if len(featureByDir) == 0 {
+		return nil
+	}
+
+	normalized := filepath.ToSlash(testFilePath)
+	parts := strings.Split(normalized, "/")
+
+	// Strategy 1: Check each directory segment (deepest first → nearest match wins).
+	for i := len(parts) - 2; i >= 0; i-- {
+		dir := strings.ToLower(parts[i])
+		if features, ok := featureByDir[dir]; ok {
+			return features
+		}
+	}
+
+	// Strategy 2: Check if any path segment contains a domain name as substring.
+	lowerPath := strings.ToLower(normalized)
+	for domain, features := range featureByDir {
+		if strings.Contains(lowerPath, "/"+domain+"/") || strings.Contains(lowerPath, "/"+domain+".") {
+			return features
+		}
+	}
+
+	return nil
 }
