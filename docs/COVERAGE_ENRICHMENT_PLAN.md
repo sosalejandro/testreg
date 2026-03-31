@@ -120,17 +120,123 @@ WARNING: coverprofile is 3 day(s) old. Run: go test -coverprofile=cover.out ./..
 
 ---
 
-## Multi-Language (Phase 2, deferred)
+## Phase 2: Istanbul/C8 Coverage (vitest, jest, playwright)
 
-The `CoverageProfileReader` port abstracts the format. Go is Phase 1. Future adapters:
+One adapter covers three frameworks — vitest, jest, and playwright all produce Istanbul-compatible JSON.
 
-| Language | Coverage Tool | Output Format |
-|----------|--------------|---------------|
-| Go | `go test -coverprofile` | Custom text format |
-| TypeScript | `vitest --coverage`, Istanbul | JSON (lcov/clover) |
-| Python | `coverage.py` | JSON |
+### How to generate
 
-Each adapter implements the same port, producing `CoverageProfile` with file-level percentages. The enrichment logic in `audit_feature.go` is language-agnostic.
+```bash
+# Vitest
+npx vitest --coverage --coverage.reporter=json    # produces coverage/coverage-final.json
+
+# Jest
+npx jest --coverage --coverageReporters=json       # produces coverage/coverage-final.json
+
+# Playwright (requires instrumented app)
+# Uses Istanbul via babel-plugin-istanbul or vite-plugin-istanbul
+# Produces coverage/coverage-final.json
+```
+
+### Istanbul JSON format
+
+```json
+{
+  "src/services/auth.ts": {
+    "path": "src/services/auth.ts",
+    "statementMap": { "0": {"start":{"line":1,"column":0},"end":{"line":1,"column":30}}, ... },
+    "s": { "0": 5, "1": 0, "2": 3, ... },
+    "fnMap": { ... },
+    "f": { "0": 5, "1": 0, ... },
+    "branchMap": { ... },
+    "b": { ... }
+  }
+}
+```
+
+Per-file: `s` = statement hit counts (keys match `statementMap`). Count `s[k] > 0` for covered statements.
+
+### New adapter
+
+`internal/adapters/istanbul_cover_profile.go` — implements `CoverageProfileReader`:
+- Parses `coverage-final.json` (or `coverage/coverage-final.json`)
+- Extracts per-file statement coverage from `s` map
+- Produces the same `CoverageProfile` type as the Go adapter
+
+### CLI usage
+
+```bash
+testreg audit --coverprofile coverage/coverage-final.json          # auto-detects format
+testreg audit --coverprofile cover.out                              # Go format
+testreg audit --coverprofile cover.out --coverprofile coverage/coverage-final.json  # both
+```
+
+Or in `.testreg.yaml`:
+```yaml
+graph:
+  coverprofiles:
+    - cover.out                          # Go
+    - coverage/coverage-final.json       # Istanbul (vitest/jest/playwright)
+```
+
+Multiple profiles are merged into a single `CoverageProfile`. File paths are deduplicated (Go and TS files never collide).
+
+---
+
+## Phase 3: Python Coverage (pytest + coverage.py)
+
+```bash
+# Generate
+pytest --cov=src --cov-report=json    # produces coverage.json
+```
+
+### coverage.py JSON format
+
+```json
+{
+  "files": {
+    "src/services/auth.py": {
+      "executed_lines": [1, 2, 5, 8],
+      "missing_lines": [3, 4, 6, 7],
+      "summary": { "covered_lines": 4, "num_statements": 8, "percent_covered": 50.0 }
+    }
+  }
+}
+```
+
+New adapter: `internal/adapters/python_cover_profile.go` — same port, same `CoverageProfile` output.
+
+---
+
+## Framework Support Boundaries
+
+### What testreg traces (call graph) vs what it tracks (coverage)
+
+| Capability | React Router | Next.js | Nest.js | Remix | Vue |
+|------------|-------------|---------|---------|-------|-----|
+| **Route auto-discovery** | Yes | No | No | No | No |
+| **Component/hook tracing** | Yes | No | No | No | No |
+| **@testreg annotations** | Yes | Yes | Yes | Yes | Yes |
+| **Test file scanning** | Yes | Yes | Yes | Yes | Yes |
+| **Coverage enrichment** | Yes (Istanbul) | Yes (Istanbul) | Yes (Istanbul) | Yes (Istanbul) | Yes (Istanbul) |
+
+Key insight: **annotation-based tracking and coverage enrichment work with any framework**. The framework-specific limitation is only in the call graph auto-discovery (the ts-scanner.ts).
+
+### What would be needed for new frameworks
+
+| Framework | Call graph support | Effort | Notes |
+|-----------|-------------------|--------|-------|
+| **Next.js** | Scan `app/` directory for `page.tsx`, `route.ts`, `layout.tsx` | Medium | File-system routing, no AST needed for route discovery. Server components add complexity. |
+| **Nest.js** | Parse `@Controller`, `@Get`, `@Post`, `@Injectable` decorators | Medium | TypeScript decorator AST parsing. Similar to Go `@api` annotations but in decorators. |
+| **Remix** | Scan route directory for `loader`, `action` exports | Medium | Similar to Next.js — file convention + export detection. |
+| **Vue/Nuxt** | Parse `.vue` SFCs + Vue Router config | Hard | Needs Vue SFC parser (not just TypeScript AST). |
+
+### Recommended priority for framework support
+
+1. **Next.js** — largest React ecosystem, file-based routing is simpler than AST parsing
+2. **Nest.js** — most popular TypeScript backend framework, decorator pattern is parseable
+3. **Remix** — similar to Next.js, smaller effort after Next.js patterns are built
+4. **Vue/Nuxt** — different component model, lowest priority unless user has Vue projects
 
 ---
 

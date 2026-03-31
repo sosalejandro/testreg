@@ -100,12 +100,17 @@ If you don't use Chi, omit `router_file` from `.testreg.yaml` and use `@api` ann
 
 ### Frontend support
 
-| Framework | Support Level | Details |
-|-----------|--------------|---------|
-| **React Router + hooks** | Full | Routes, components, hooks, and API service calls traced |
-| **TanStack Query** | Full | `useQuery`/`useMutation` hooks recognized |
-| **Next.js, Remix** | None | App directory routing not supported |
-| **Vue, Svelte, Angular** | None | Only TypeScript/React patterns are parsed |
+testreg has two levels of support for frontend frameworks: **call graph tracing** (auto-discovers routes and component chains) and **coverage tracking** (annotations + test scanning). They're independent.
+
+| Framework | Call Graph (`trace`/`graph`) | Coverage Tracking (`scan`/`status`/`audit`) |
+|-----------|---------------------------|---------------------------------------------|
+| **React Router + TanStack Query** | Full auto-discovery | Full (`// @testreg` annotations) |
+| **Next.js** | Not yet (file-system routing) | Full (annotations work, Istanbul coverage planned) |
+| **Nest.js** | Not yet (decorator routing) | Full (annotations work, Istanbul coverage planned) |
+| **Remix** | Not yet (loader/action routing) | Full (annotations work) |
+| **Vue, Svelte, Angular** | Not supported | Full (annotations work with any test file) |
+
+Call graph tracing requires framework-specific AST parsing and only works with React Router today. But **annotation-based coverage tracking works with any framework** -- add `// @testreg feature.name` to your test files and `testreg scan` picks them up regardless of framework.
 
 Frontend scanning is entirely optional. If omitted, testreg produces backend-only graphs.
 
