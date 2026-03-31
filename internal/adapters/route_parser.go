@@ -27,9 +27,10 @@ func NewRouteParser() *RouteParser {
 	return &RouteParser{}
 }
 
-// httpMethods lists the Chi router methods we recognise. The map keys are the
-// method names as they appear in Go source (e.g. r.Get, r.Post).
+// httpMethods lists the router methods we recognise. Supports both
+// Chi style (r.Get, r.Post) and Echo style (e.GET, e.POST).
 var httpMethods = map[string]string{
+	// Chi style (capitalized)
 	"Get":     "GET",
 	"Post":    "POST",
 	"Put":     "PUT",
@@ -39,14 +40,26 @@ var httpMethods = map[string]string{
 	"Options": "OPTIONS",
 	"Connect": "CONNECT",
 	"Trace":   "TRACE",
+	// Echo style (uppercase)
+	"GET":     "GET",
+	"POST":    "POST",
+	"PUT":     "PUT",
+	"DELETE":  "DELETE",
+	"PATCH":   "PATCH",
+	"HEAD":    "HEAD",
+	"OPTIONS": "OPTIONS",
 }
 
 // Parse reads a Go router file and extracts route-to-handler mappings.
-// Supports Chi router patterns:
+// Supports Chi, Echo, and stdlib router patterns:
 //
-//	r.Get("/path", handler)
-//	r.Post("/path", handler)
-//	r.Route("/prefix", func(r chi.Router) { r.Get("/sub", handler) })
+//	r.Get("/path", handler)           // Chi
+//	r.Route("/prefix", func(r) { })  // Chi nested routes
+//	e.GET("/path", handler)           // Echo
+//	e.Group("/prefix")                // Echo groups
+//	e.Any("/path", handler)           // Echo any-method
+//	mux.HandleFunc("/path", handler)  // stdlib
+//	mux.HandleFunc("POST /p", h)     // Go 1.22+ pattern
 //	r.Group(func(r chi.Router) { ... })
 //	r.With(middleware).Get("/path", handler)
 func (p *RouteParser) Parse(filePath string) ([]RouteMapping, error) {
@@ -103,43 +116,119 @@ func (p *RouteParser) ParseDir(dirPath string) ([]RouteMapping, error) {
 
 // extractRoutesFromFunc walks the body of a function declaration and extracts
 // route registrations with an initial empty prefix.
+// Supports both Chi (nested function literals) and Echo (variable assignment) patterns.
 func extractRoutesFromFunc(fset *token.FileSet, fn *ast.FuncDecl, filePath string) []RouteMapping {
 	if fn.Body == nil {
 		return nil
 	}
 
+	// Phase 1: Collect group variable assignments.
+	// Echo pattern: grp := e.Group("/prefix")
+	// Maps variable name → accumulated prefix path.
+	groupVars := buildGroupVarMap(fn.Body)
+
 	var routes []RouteMapping
 	for _, stmt := range fn.Body.List {
-		routes = append(routes, extractRoutesFromStmt(fset, stmt, "", filePath)...)
+		routes = append(routes, extractRoutesFromStmtWithGroups(fset, stmt, "", filePath, groupVars)...)
 	}
 	return routes
 }
 
-// extractRoutesFromStmt extracts routes from a single statement, with a prefix
-// for nested Route() calls.
-func extractRoutesFromStmt(fset *token.FileSet, stmt ast.Stmt, prefix, filePath string) []RouteMapping {
+// buildGroupVarMap scans a block for variable assignments like:
+//
+//	apiGroup := e.Group("/api")
+//	enrollGroup := apiGroup.Group("/enroll")
+//
+// It returns a map of variable name → full prefix path, resolving chains.
+func buildGroupVarMap(body *ast.BlockStmt) map[string]string {
+	groups := make(map[string]string)
+
+	for _, stmt := range body.List {
+		// Look for: varName := expr.Group("/prefix") or varName := expr.Group("/prefix", middleware)
+		assign, ok := stmt.(*ast.AssignStmt)
+		if !ok || len(assign.Lhs) == 0 || len(assign.Rhs) == 0 {
+			continue
+		}
+
+		// Get the variable name being assigned.
+		varIdent, ok := assign.Lhs[0].(*ast.Ident)
+		if !ok {
+			continue
+		}
+
+		// Check if RHS is a .Group("/prefix") call.
+		call, ok := assign.Rhs[0].(*ast.CallExpr)
+		if !ok {
+			continue
+		}
+
+		sel, ok := call.Fun.(*ast.SelectorExpr)
+		if !ok || sel.Sel.Name != "Group" {
+			continue
+		}
+
+		// Extract the prefix string from the first argument.
+		if len(call.Args) == 0 {
+			continue
+		}
+		pathLit, ok := call.Args[0].(*ast.BasicLit)
+		if !ok {
+			continue
+		}
+		prefix := strings.Trim(pathLit.Value, `"`)
+
+		// Resolve the receiver: if it's a variable we already tracked, chain prefixes.
+		receiverName := exprToString(sel.X)
+		if parentPrefix, ok := groups[receiverName]; ok {
+			prefix = joinPath(parentPrefix, prefix)
+		}
+
+		groups[varIdent.Name] = prefix
+	}
+
+	return groups
+}
+
+// extractRoutesFromStmtWithGroups is like extractRoutesFromStmt but also resolves
+// group variable prefixes for Echo-style routes.
+func extractRoutesFromStmtWithGroups(fset *token.FileSet, stmt ast.Stmt, prefix, filePath string, groupVars map[string]string) []RouteMapping {
 	var routes []RouteMapping
 
 	switch s := stmt.(type) {
 	case *ast.ExprStmt:
+		// Check if this is a call on a tracked group variable: grp.POST("/path", handler)
+		if call, ok := s.X.(*ast.CallExpr); ok {
+			if sel, ok := call.Fun.(*ast.SelectorExpr); ok {
+				receiverName := exprToString(sel.X)
+				if groupPrefix, ok := groupVars[receiverName]; ok {
+					routes = append(routes, extractRoutesFromExpr(fset, s.X, groupPrefix, filePath)...)
+					return routes
+				}
+			}
+		}
 		routes = append(routes, extractRoutesFromExpr(fset, s.X, prefix, filePath)...)
 	case *ast.IfStmt:
-		// Handle conditionals like: if subscriptionService != nil { r.With(...).Post(...) }
 		if s.Body != nil {
 			for _, inner := range s.Body.List {
-				routes = append(routes, extractRoutesFromStmt(fset, inner, prefix, filePath)...)
+				routes = append(routes, extractRoutesFromStmtWithGroups(fset, inner, prefix, filePath, groupVars)...)
 			}
 		}
 		if s.Else != nil {
-			routes = append(routes, extractRoutesFromStmt(fset, s.Else, prefix, filePath)...)
+			routes = append(routes, extractRoutesFromStmtWithGroups(fset, s.Else, prefix, filePath, groupVars)...)
 		}
 	case *ast.BlockStmt:
 		for _, inner := range s.List {
-			routes = append(routes, extractRoutesFromStmt(fset, inner, prefix, filePath)...)
+			routes = append(routes, extractRoutesFromStmtWithGroups(fset, inner, prefix, filePath, groupVars)...)
 		}
 	}
 
 	return routes
+}
+
+// extractRoutesFromStmt is the non-group-aware version, used by nested Route()/Group()
+// function literals that don't need Echo-style variable tracking.
+func extractRoutesFromStmt(fset *token.FileSet, stmt ast.Stmt, prefix, filePath string) []RouteMapping {
+	return extractRoutesFromStmtWithGroups(fset, stmt, prefix, filePath, nil)
 }
 
 // extractRoutesFromExpr analyses a call expression to determine whether it
@@ -175,6 +264,9 @@ func extractRoutesFromExpr(fset *token.FileSet, expr ast.Expr, prefix, filePath 
 		return extractGroup(fset, call, prefix, filePath)
 	case "HandleFunc", "Handle":
 		return extractStdlibRoute(fset, call, prefix, filePath)
+	case "Any":
+		// Echo's Any() matches all HTTP methods. Record as ANY.
+		return extractHTTPRoute(fset, call, "ANY", prefix, filePath)
 	}
 
 	return nil

@@ -827,3 +827,144 @@ func TestJoinPath(t *testing.T) {
 		}
 	}
 }
+
+func TestParseEchoRoutes(t *testing.T) {
+	t.Parallel()
+
+	src := `package handlers
+
+import "github.com/labstack/echo/v4"
+
+func Handlers(e *echo.Group) {
+	authGroup := e.Group("/auth")
+	authGroup.POST("/admin/login", adminLogin)
+	authGroup.Any("/google/login", googleLogin)
+	authGroup.Any("/google/callback", googleCallback)
+	authGroup.POST("/:id_user/complete-student/", completeStudent)
+}
+`
+	path := writeGoRouterFile(t, src)
+	parser := NewRouteParser()
+	routes, err := parser.Parse(path)
+	if err != nil {
+		t.Fatalf("Parse error: %v", err)
+	}
+
+	expected := map[string]string{
+		"POST /auth/admin/login":                "adminLogin",
+		"ANY /auth/google/login":                "googleLogin",
+		"ANY /auth/google/callback":             "googleCallback",
+		"POST /auth/:id_user/complete-student/": "completeStudent",
+	}
+
+	found := make(map[string]string)
+	for _, r := range routes {
+		key := r.Method + " " + r.Path
+		found[key] = r.Handler
+	}
+
+	for key, wantHandler := range expected {
+		gotHandler, ok := found[key]
+		if !ok {
+			t.Errorf("missing route %q", key)
+			continue
+		}
+		if gotHandler != wantHandler {
+			t.Errorf("route %q handler = %q, want %q", key, gotHandler, wantHandler)
+		}
+	}
+}
+
+func TestParseEchoGroupWithMiddleware(t *testing.T) {
+	t.Parallel()
+
+	src := `package handlers
+
+import "github.com/labstack/echo/v4"
+
+func Handlers(e *echo.Group) {
+	grp := e.Group("/friend", authMiddlewares.StudentAuth)
+	grp.POST("/add/:studentToAdd", addFriend)
+	grp.DELETE("/eliminate/:studentToEliminate", eliminateFriend)
+	grp.GET("/", listFriends)
+}
+`
+	path := writeGoRouterFile(t, src)
+	parser := NewRouteParser()
+	routes, err := parser.Parse(path)
+	if err != nil {
+		t.Fatalf("Parse error: %v", err)
+	}
+
+	expected := map[string]string{
+		"POST /friend/add/:studentToAdd":                 "addFriend",
+		"DELETE /friend/eliminate/:studentToEliminate":    "eliminateFriend",
+		"GET /friend":                                    "listFriends",
+	}
+
+	found := make(map[string]string)
+	for _, r := range routes {
+		found[r.Method+" "+r.Path] = r.Handler
+	}
+
+	for key, wantHandler := range expected {
+		gotHandler, ok := found[key]
+		if !ok {
+			t.Errorf("missing route %q", key)
+			continue
+		}
+		if gotHandler != wantHandler {
+			t.Errorf("route %q handler = %q, want %q", key, gotHandler, wantHandler)
+		}
+	}
+}
+
+func TestParseEchoNestedGroups(t *testing.T) {
+	t.Parallel()
+
+	src := `package handlers
+
+import "github.com/labstack/echo/v4"
+
+func CreateHandlers(e *echo.Echo) {
+	apiGroup := e.Group("/api")
+	apiGroup.GET("/health", health)
+
+	enrollGroup := apiGroup.Group("/enroll")
+	enrollGroup.POST("/:subject", createEnroll)
+	enrollGroup.PUT("/:subject", updatePassed)
+	enrollGroup.GET("/:subject", getPassed)
+	enrollGroup.DELETE("/", deletePassed)
+}
+`
+	path := writeGoRouterFile(t, src)
+	parser := NewRouteParser()
+	routes, err := parser.Parse(path)
+	if err != nil {
+		t.Fatalf("Parse error: %v", err)
+	}
+
+	expected := map[string]string{
+		"GET /api/health":            "health",
+		"POST /api/enroll/:subject":  "createEnroll",
+		"PUT /api/enroll/:subject":   "updatePassed",
+		"GET /api/enroll/:subject":   "getPassed",
+		"DELETE /api/enroll":         "deletePassed",
+	}
+
+	found := make(map[string]string)
+	for _, r := range routes {
+		found[r.Method+" "+r.Path] = r.Handler
+	}
+
+	for key, wantHandler := range expected {
+		gotHandler, ok := found[key]
+		if !ok {
+			t.Errorf("missing route %q (found routes: %v)", key, found)
+			continue
+		}
+		if gotHandler != wantHandler {
+			t.Errorf("route %q handler = %q, want %q", key, gotHandler, wantHandler)
+		}
+	}
+}

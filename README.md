@@ -85,8 +85,9 @@ The Go AST scanner resolves call graphs by parsing source code structure -- it d
 | Router | Support Level | Details |
 |--------|--------------|---------|
 | **Chi** | Auto-detected | `r.Get()`, `r.Post()`, `r.Route()`, `r.Group()`, `r.With()` -- all parsed from router file |
+| **Echo** | Auto-detected | `e.GET()`, `e.POST()`, `e.Group()`, `e.Any()` -- including nested group variable chains |
 | **stdlib `net/http`** | Auto-detected | `mux.HandleFunc()`, `mux.Handle()`, Go 1.22+ pattern routing (`"POST /path"`) |
-| **Gin, Echo, Fiber, gorilla/mux** | Via annotations | Add `@api` annotations. No auto-detection for these frameworks |
+| **Gin, Fiber, gorilla/mux** | Via annotations | Add `@api` annotations. No auto-detection for these frameworks |
 
 If you don't use Chi, omit `router_file` from `.testreg.yaml` and use `@api` annotations on all handlers. The graph works identically.
 
