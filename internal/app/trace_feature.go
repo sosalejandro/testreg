@@ -299,6 +299,12 @@ func deriveEntryPoints(f *domain.Feature) []string {
 			// HTTP endpoint: "POST /api/v1/auth/login"
 			id := fmt.Sprintf("%s %s", api.Method, api.Path)
 			points = append(points, id)
+		} else if api.Method == "GRAPHQL" {
+			// GraphQL resolver: "Mutation.trainingLogSet" → "mutationResolver.TrainingLogSet"
+			id := graphqlEntryPoint(api.Path)
+			if id != "" {
+				points = append(points, id)
+			}
 		} else {
 			// gRPC/Consumer/Event: use the path directly as function node ID
 			// e.g., "ProductsServer.CreateProduct"
@@ -306,6 +312,29 @@ func deriveEntryPoints(f *domain.Feature) []string {
 		}
 	}
 	return points
+}
+
+// graphqlEntryPoint converts a GraphQL operation path to a Go resolver node ID.
+//
+//	"Mutation.trainingLogSet"   → "mutationResolver.TrainingLogSet"
+//	"Query.trainingSessions"   → "queryResolver.TrainingSessions"
+//	"Subscription.onNewSet"    → "subscriptionResolver.OnNewSet"
+func graphqlEntryPoint(path string) string {
+	parts := strings.SplitN(path, ".", 2)
+	if len(parts) != 2 || parts[1] == "" {
+		return ""
+	}
+
+	operation := parts[0] // "Mutation"
+	field := parts[1]     // "trainingLogSet"
+
+	// Go receiver: mutationResolver, queryResolver, subscriptionResolver
+	receiver := strings.ToLower(operation[:1]) + operation[1:] + "Resolver"
+
+	// Go method: PascalCase of the field name (first letter uppercased)
+	method := strings.ToUpper(field[:1]) + field[1:]
+
+	return receiver + "." + method
 }
 
 // collectTestFiles gathers all known test file paths from a feature's coverage entries.

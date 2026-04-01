@@ -792,3 +792,76 @@ func (r *yamlStoreReader) LoadDomain(dir, domainName string) (*domain.DomainFile
 	}
 	return &df, nil
 }
+
+// ---------------------------------------------------------------------------
+// Tests for GraphQL entry point derivation
+// ---------------------------------------------------------------------------
+
+func TestGraphqlEntryPoint(t *testing.T) {
+	tests := []struct {
+		path string
+		want string
+	}{
+		{"Mutation.trainingLogSet", "mutationResolver.TrainingLogSet"},
+		{"Query.trainingSessions", "queryResolver.TrainingSessions"},
+		{"Subscription.onNewSet", "subscriptionResolver.OnNewSet"},
+		{"Mutation.supplementLogDose", "mutationResolver.SupplementLogDose"},
+		{"Query.heatmapData", "queryResolver.HeatmapData"},
+		// Edge cases
+		{"", ""},
+		{"Mutation", ""},          // no field name
+		{"Mutation.", ""},         // empty field name
+		{"trainingLogSet", ""},    // no operation type
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.path, func(t *testing.T) {
+			got := graphqlEntryPoint(tt.path)
+			if got != tt.want {
+				t.Errorf("graphqlEntryPoint(%q) = %q, want %q", tt.path, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestDeriveEntryPoints_GRAPHQL(t *testing.T) {
+	feature := &domain.Feature{
+		ID: "training.record-exercise",
+		Surfaces: domain.Surfaces{
+			API: []domain.APISurface{
+				{Method: "GRAPHQL", Path: "Mutation.trainingLogSet"},
+			},
+		},
+	}
+
+	points := deriveEntryPoints(feature)
+	if len(points) != 1 {
+		t.Fatalf("expected 1 entry point, got %d: %v", len(points), points)
+	}
+	if points[0] != "mutationResolver.TrainingLogSet" {
+		t.Errorf("entry point = %q, want %q", points[0], "mutationResolver.TrainingLogSet")
+	}
+}
+
+func TestDeriveEntryPoints_MixedRESTAndGraphQL(t *testing.T) {
+	feature := &domain.Feature{
+		ID: "training.record-exercise",
+		Surfaces: domain.Surfaces{
+			API: []domain.APISurface{
+				{Method: "POST", Path: "/api/v1/training/sets"},
+				{Method: "GRAPHQL", Path: "Mutation.trainingLogSet"},
+			},
+		},
+	}
+
+	points := deriveEntryPoints(feature)
+	if len(points) != 2 {
+		t.Fatalf("expected 2 entry points, got %d: %v", len(points), points)
+	}
+	if points[0] != "POST /api/v1/training/sets" {
+		t.Errorf("entry point[0] = %q, want REST", points[0])
+	}
+	if points[1] != "mutationResolver.TrainingLogSet" {
+		t.Errorf("entry point[1] = %q, want GraphQL", points[1])
+	}
+}

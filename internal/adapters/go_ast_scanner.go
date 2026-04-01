@@ -719,7 +719,7 @@ func classifyNodeKind(pkgDir string) domain.NodeKind {
 	lower := strings.ToLower(pkgDir)
 
 	switch {
-	case strings.Contains(lower, "handler"):
+	case strings.Contains(lower, "handler") || strings.Contains(lower, "resolver"):
 		return domain.NodeHandler
 	case strings.Contains(lower, "persistence") || strings.Contains(lower, "repository"):
 		return domain.NodeRepository
