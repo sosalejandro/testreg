@@ -71,6 +71,7 @@ testreg's existing use cases are the backend. The server is a thin HTTP layer ov
 │ Features │                                                      │
 │ Sprint   │                                                      │
 │ Graph    │                                                      │
+│ Contract │                                                      │
 │ Metrics  │                                                      │
 │ Diff     │                                                      │
 │ Report   │                                                      │
@@ -118,6 +119,17 @@ testreg's existing use cases are the backend. The server is a thin HTTP layer ov
 │  │ billing      █████░░░░░ 9/14  64%          │              │
 │  │ ...                                        │              │
 │  └────────────────────────────────────────────┘              │
+│                                                              │
+│  Quick Contract Preview                                      │
+│  ┌──────────────────────────────────────────────────────┐   │
+│  │ Feature: [___________________] [Preview]              │   │
+│  │                                                       │   │
+│  │ training.record-exercise                              │   │
+│  │   Entry: GRAPHQL Mutation.trainingLogSet              │   │
+│  │   Layers: GraphQL → Resolver → Service → Repository   │   │
+│  │   Coverage: 2/4 layers tested                         │   │
+│  │   [Open full contract →]                              │   │
+│  └──────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -358,6 +370,82 @@ This is the ONE page that needs client-side JavaScript beyond htmx — graph lay
 
 **Data source:** `diagnose <feature> --symptom "..." --json`
 
+### Page 8: Contract View
+
+**What it shows:** Full API contract for a feature, rendered as layered cards from entry point down to SQL. Each layer shows the function signature, file location, inputs/outputs, and (when `type_checking: true`) exact struct field tables. Test coverage is shown per layer at the bottom.
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│  Contract: [training.record-exercise ▼]    [Terminal] [JSON] [MD]  │
+│                                                                     │
+│  Entry: GRAPHQL Mutation.trainingLogSet                            │
+│                                                                     │
+│  ┌─── Layer 1: GraphQL API ─────────────────────────────────────┐  │
+│  │  mutation { trainingLogSet(input: TrainingLogSetInput!): ... } │  │
+│  │                                                               │  │
+│  │  Input: TrainingLogSetInput                                   │  │
+│  │  ┌──────────────┬──────────┬──────────┐                      │  │
+│  │  │ Field        │ Type     │ Required │                      │  │
+│  │  ├──────────────┼──────────┼──────────┤                      │  │
+│  │  │ sessionId    │ UUID     │ yes      │                      │  │
+│  │  │ exerciseId   │ UUID     │ yes      │                      │  │
+│  │  │ reps         │ Int      │ no       │                      │  │
+│  │  │ weight       │ Float    │ no       │                      │  │
+│  │  └──────────────┴──────────┴──────────┘                      │  │
+│  └───────────────────────────────────────────────────────────────┘  │
+│                                                                     │
+│  ┌─── Layer 2: Gateway Resolver ────────────────────────────────┐  │
+│  │  mutationResolver.TrainingLogSet()                            │  │
+│  │  File: src/cmd/graphql/resolvers/training.resolvers.go:60     │  │
+│  │  Delegates to: r.Training.LogSet()                            │  │
+│  │                                                               │  │
+│  │  Input: generated.TrainingLogSetInput  (struct field table)   │  │
+│  │  Output: *generated.TrainingExerciseSet                       │  │
+│  └───────────────────────────────────────────────────────────────┘  │
+│                                                                     │
+│  ┌─── Layer 3: Service ─────────────────────────────────────────┐  │
+│  │  SessionLifecycleService.LogSet()                             │  │
+│  │  File: session_lifecycle_service.go:141                        │  │
+│  │                                                               │  │
+│  │  Calls:                                                       │  │
+│  │  ├─ aggregates.NewExerciseSet()                               │  │
+│  │  ├─ setRepo.Create()                                          │  │
+│  │  └─ eventPublisher.PublishSetLogged()                         │  │
+│  └───────────────────────────────────────────────────────────────┘  │
+│                                                                     │
+│  ┌─── Layer 4: Repository / SQL ────────────────────────────────┐  │
+│  │  setRepo.Create()                                             │  │
+│  │  File: exercise_set_repository.go:28                          │  │
+│  │                                                               │  │
+│  │  SQL: InsertExerciseSet                                       │  │
+│  │  File: queries/exercise_sets.sql:12                           │  │
+│  └───────────────────────────────────────────────────────────────┘  │
+│                                                                     │
+│  ┌─── Test Coverage ────────────────────────────────────────────┐  │
+│  │  Layer 1 (GraphQL):     ✘ NO TEST                             │  │
+│  │  Layer 2 (Resolver):    ✘ NO TEST                             │  │
+│  │  Layer 3 (Service):     ✓ event_publisher_test.go             │  │
+│  │  Layer 4 (Repository):  ✓ exercise_set_test.go                │  │
+│  │                                                               │  │
+│  │  Coverage: 2/4 layers │ Missing: resolver, GraphQL schema     │  │
+│  └───────────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+**Visual design details:**
+- Each layer card has a colored left border gradient indicating its kind:
+  - Blue (#58a6ff) for handler/resolver layers
+  - Green (#3fb950) for service layers
+  - Yellow (#d29922) for repository layers
+  - Purple (#bc8cff) for SQL/query layers
+- Struct field tables appear inside layer cards when `type_checking: true` is enabled in the project config. The `TypeExtractor` (backed by go/types) resolves exact field names, types, and tags across packages.
+- Format toggle buttons (Terminal / JSON / MD) switch between a styled terminal view, raw JSON output, and rendered markdown. The markdown view includes a "Copy as markdown" button for pasting contract summaries into PR descriptions.
+- The feature selector dropdown is populated from the registry. Selecting a feature triggers `hx-get="/contract/{id}"` to fetch the layered card layout.
+
+**Data source:** `testreg contract <feature> --format json`
+
+**htmx behavior:** Feature selection does `hx-get="/contract/{featureID}"` which returns the full set of layer cards. Format toggle buttons swap the content area between pre-rendered views via `hx-get="/contract/{featureID}?format=terminal|json|md"`. The "Copy as markdown" button uses a small inline script to copy the markdown content to clipboard.
+
 ---
 
 ## Scan Controls (the "Play Button")
@@ -371,6 +459,9 @@ The top bar has a **[Scan]** button that opens a checklist of what to scan:
 │  ☑ Build dependency graph (Go AST)       │
 │  ☑ Build frontend graph (TypeScript)     │
 │  ☑ Audit all features (health scores)    │
+│  ☐ Enable type checking (go/types)       │
+│    Resolves cross-package calls exactly.  │
+│    Slower, requires buildable project.   │
 │  ☐ Import Go test results                │
 │     Path: [test-output.json______]       │
 │  ☐ Import Playwright results             │
@@ -415,6 +506,8 @@ internal/
       metrics.html             # Quality signals page
       diff.html                # Diff/progress page
       diagnose.html            # Diagnose page
+      contract.html            # Contract view page
+      contract_layer.html      # Contract layer card partial (htmx target)
       scan_modal.html          # Scan options modal
     static/
       htmx.min.js             # htmx library (~14KB)
@@ -468,9 +561,11 @@ func (s *Server) routes() http.Handler {
     mux.HandleFunc("GET /metrics", s.handleMetrics)
     mux.HandleFunc("GET /diff", s.handleDiff)
     mux.HandleFunc("GET /diagnose", s.handleDiagnose)
+    mux.HandleFunc("GET /contract", s.handleContract)
     
     // htmx partials (return HTML fragments)
     mux.HandleFunc("GET /feature/{id}", s.handleFeatureDetail)
+    mux.HandleFunc("GET /contract/{id}", s.handleContractDetail)
     mux.HandleFunc("GET /graph/data/{id}", s.handleGraphData)
     mux.HandleFunc("POST /scan/run", s.handleScanRun)
     mux.HandleFunc("POST /diagnose/run", s.handleDiagnoseRun)
@@ -555,6 +650,7 @@ Scan with progress (SSE):
 | `graph <feature>` | Nodes + edges for visualization | Graph |
 | `sprint` | Priority-scored ranking | Sprint |
 | `diagnose` | Symptom → layer → files | Diagnose |
+| `contract <feature>` | Layered API contract (schema → resolver → service → repo → SQL) | Contract, Overview (quick preview) |
 | `diff` | Snapshot comparison | Diff |
 
 ### Data from external test runners (optional enrichment)
@@ -634,5 +730,10 @@ This is doable without LLM for structured errors (HTTP status codes, timeout mes
 - User authentication (local tool, not shared server)
 - Persistent database (reads from registry YAML + cache files each request)
 - CI/CD integration dashboard (could POST results to the running server)
+
+**Previously listed, now implemented:**
+- ~~Auto-scaffolding from routes~~ — done via `testreg init --discover` (Chi, Echo, stdlib routers)
+- ~~GraphQL support~~ — done via GraphQL resolver tracing (`Mutation.trainingLogSet` entry point resolution)
+- ~~Python support~~ — done via `# @testreg` annotations and `test_*.py` file discovery
 
 These are all natural extensions but not needed for v1. The core value is: **one command, full visibility, interactive exploration.**

@@ -69,7 +69,7 @@ Using the design system from above, design the application shell layout.
 
 STRUCTURE:
   - Fixed header (48px height): Logo (circle icon ◉) + "testreg" text left, project name center-left, [Scan] primary button + [☀/🌙] theme toggle + [⚙] settings right
-  - Fixed sidebar (200px, left): 7 navigation items with icons + labels. Active item has left 3px accent border + bg-tertiary. Collapsible to 48px (icons only) via toggle at bottom.
+  - Fixed sidebar (200px, left): 8 navigation items with icons + labels. Active item has left 3px accent border + bg-tertiary. Collapsible to 48px (icons only) via toggle at bottom.
   - Main content area: fills remaining space, independently scrollable
   - Fixed status bar (32px, bottom): shows "184 features • 771 tests • 18% at target • Last scan: 10.2s" in monospace, subtle top border
 
@@ -78,9 +78,10 @@ SIDEBAR ITEMS (with icons):
   2. Features (list icon)
   3. Graph (node-graph icon)
   4. Sprint (flag/target icon)
-  5. Metrics (chart icon)
-  6. Diff (git-diff icon)
-  7. Diagnose (stethoscope/debug icon)
+  5. Contract (layers/stack icon)
+  6. Metrics (chart icon)
+  7. Diff (git-diff icon)
+  8. Diagnose (stethoscope/debug icon)
 
 RESPONSIVE:
   Desktop (>1200px): Full sidebar visible
@@ -544,6 +545,113 @@ The progress bar inside step 3 is the same accent blue (#58a6ff).
 
 ---
 
+## Prompt 10: Contract Page
+
+**Context:** New chat. This is the layered API contract view.
+
+```
+Design a full-page "Contract View" for a developer dashboard called "testreg."
+
+This page shows the full API contract for a feature, rendered as stacked layer cards from entry point down to SQL. It answers: "What does this feature touch, end to end?"
+
+Dark mode. Background: #0d1117. Cards: #161b22. Text: #e6edf3 primary, #8b949e secondary.
+Font: Inter for UI, JetBrains Mono for code and field tables. Accent: #58a6ff.
+
+CONTROLS BAR (top, inside a subtle card):
+  Feature selector dropdown: [training.record-exercise ▼]
+    Populated from registry. Selecting a feature loads the contract.
+  Format toggle: radio pills [Terminal] [JSON] [Markdown]
+  Action button: [Copy as markdown] — copies contract to clipboard for PR descriptions
+
+ENTRY POINT BANNER (below controls):
+  "Entry: GRAPHQL Mutation.trainingLogSet" in monospace
+  Small info chip: "4 layers | type_checking: on"
+
+LAYER CARDS (stacked vertically, the core of the page):
+  Each layer is a card (#161b22 background, 1px #30363d border, 8px radius, 16px padding).
+  Each card has a 4px left border colored by layer kind:
+    Blue (#58a6ff) — handler/resolver
+    Green (#3fb950) — service
+    Yellow (#d29922) — repository
+    Purple (#bc8cff) — query/SQL
+
+  CARD HEADER: uppercase label + file:line reference right-aligned in muted text
+    "LAYER 1: GRAPHQL API" with "schema.graphqls:142" right
+
+  Inside each card: Input/Output tabs. Active tab has bottom border 2px accent.
+
+  LAYER 1 — GraphQL API (blue left border):
+    Header: "LAYER 1: GRAPHQL API" | "schema.graphqls:142"
+    Content:
+      Code block (monospace, 12px):
+        mutation { trainingLogSet(input: TrainingLogSetInput!): TrainingExerciseSet! }
+      
+      Struct field table (when type_checking enabled):
+        "Input: TrainingLogSetInput"
+        Table with columns: Field | Type | Required
+          sessionId    UUID     yes
+          exerciseId   UUID     yes
+          reps         Int      no
+          weight       Float    no
+        
+        Table styling: 40px row height, alternating bg (#161b22 / #1c2128), 
+        monospace text, header row in #8b949e uppercase 11px
+
+  LAYER 2 — Gateway Resolver (blue left border):
+    Header: "LAYER 2: GATEWAY RESOLVER" | "training.resolvers.go:60"
+    Content:
+      Function: "mutationResolver.TrainingLogSet()" in monospace
+      Delegates to: "r.Training.LogSet()" — accent blue link
+      
+      Input struct table: generated.TrainingLogSetInput
+        Same table format as Layer 1, showing Go struct fields
+      Output: "*generated.TrainingExerciseSet" in monospace
+
+  LAYER 3 — Service (green left border):
+    Header: "LAYER 3: SERVICE" | "session_lifecycle_service.go:141"
+    Content:
+      Function: "SessionLifecycleService.LogSet()"
+      
+      Calls (indented tree):
+        ├─ aggregates.NewExerciseSet()
+        ├─ setRepo.Create()
+        └─ eventPublisher.PublishSetLogged()
+      
+      Each call is a monospace line. Calls that link to other layers 
+      are rendered as accent blue links.
+
+  LAYER 4 — Repository / SQL (yellow left border, then purple):
+    Header: "LAYER 4: REPOSITORY" | "exercise_set_repository.go:28"
+    Content:
+      Function: "setRepo.Create()"
+      SQL: "InsertExerciseSet" — purple text (#bc8cff)
+      SQL file: "queries/exercise_sets.sql:12" in muted text
+
+TEST COVERAGE SECTION (bottom, full-width card):
+  Header: "TEST COVERAGE" uppercase
+  Per-layer status list:
+    Layer 1 (GraphQL):     ✘ NO TEST          — red text (#f85149)
+    Layer 2 (Resolver):    ✘ NO TEST          — red text
+    Layer 3 (Service):     ✓ event_publisher_test.go    — green text (#3fb950)
+    Layer 4 (Repository):  ✓ exercise_set_test.go       — green text
+  
+  Summary bar: "2/4 layers tested" with a 4-segment progress bar 
+  (2 green, 2 red segments)
+  
+  Missing coverage note in muted text: "Missing: resolver layer, GraphQL schema tests"
+
+RESPONSIVE:
+  Desktop: single column of layer cards, max-width 900px centered
+  Tablet: same layout, slightly reduced padding
+  Mobile: full width, struct field tables scroll horizontally
+
+Show the page with all 4 layers expanded, the training.record-exercise feature selected,
+type_checking enabled (so struct field tables are visible), Terminal format active.
+The page should feel like reading an API specification — clean, precise, layered.
+```
+
+---
+
 ## Prompt Order Summary
 
 | # | Prompt | Context | What it produces |
@@ -557,3 +665,4 @@ The progress bar inside step 3 is the same accent blue (#58a6ff).
 | 7 | Sprint + Diff | New chat | Two data pages (priority ranking + snapshot comparison) |
 | 8 | Metrics + Diagnose | Same chat | Two pages (quality signals + symptom diagnosis) |
 | 9 | Scan Modal | New chat | Modal overlay with progress indicators |
+| 10 | Contract Page | New chat | Layered API contract view with struct field tables |
