@@ -39,7 +39,7 @@ with their call relationships.`,
 
 		// Create dependencies.
 		store := adapters.NewYAMLStore()
-		builder := adapters.NewGoASTScanner()
+		builder := adapters.NewGraphBuilder(config)
 		traceUC := app.NewTraceFeatureUseCase(store, builder)
 
 		result, err := traceUC.Execute(resolvedRegistryDir(), featureID, config)

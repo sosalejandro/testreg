@@ -49,7 +49,7 @@ fix type or domain.`,
 
 		// Create dependencies and run audit.
 		store := adapters.NewYAMLStore()
-		builder := adapters.NewGoASTScanner()
+		builder := adapters.NewGraphBuilder(config)
 		traceUC := app.NewTraceFeatureUseCase(store, builder)
 		auditUC := app.NewAuditFeatureUseCase(traceUC, store)
 

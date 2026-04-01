@@ -87,7 +87,7 @@ Gaps are prioritized by severity:
 
 		// Create dependencies.
 		store := adapters.NewYAMLStore()
-		builder := adapters.NewGoASTScanner()
+		builder := adapters.NewGraphBuilder(config)
 		traceUC := app.NewTraceFeatureUseCase(store, builder)
 		auditUC := app.NewAuditFeatureUseCase(traceUC, store)
 

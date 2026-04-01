@@ -45,7 +45,7 @@ an ordered list of files to investigate.`,
 
 		// Create dependencies.
 		store := adapters.NewYAMLStore()
-		builder := adapters.NewGoASTScanner()
+		builder := adapters.NewGraphBuilder(config)
 		traceUC := app.NewTraceFeatureUseCase(store, builder)
 		useCase := app.NewDiagnoseFeatureUseCase(traceUC)
 

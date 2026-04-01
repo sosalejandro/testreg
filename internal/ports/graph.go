@@ -11,7 +11,9 @@ type GraphConfig struct {
 	FrontendRoots   []string
 	IgnorePackages  []string
 	IgnoreFunctions []string
-	CacheDir        string
-	MaxDepth        int
-	Concurrency     int
+	CacheDir          string
+	MaxDepth          int
+	Concurrency       int
+	TypeChecking      bool
+	GraphQLSchemaDirs []string
 }

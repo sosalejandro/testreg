@@ -51,7 +51,7 @@ when a feature breaks.`,
 
 		// Create dependencies.
 		store := adapters.NewYAMLStore()
-		builder := adapters.NewGoASTScanner()
+		builder := adapters.NewGraphBuilder(config)
 		useCase := app.NewTraceFeatureUseCase(store, builder)
 
 		result, err := useCase.Execute(resolvedRegistryDir(), featureID, config)

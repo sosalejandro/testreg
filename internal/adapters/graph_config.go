@@ -16,17 +16,24 @@ type GraphConfigFile struct {
 
 // GraphSection holds the graph-specific configuration values.
 type GraphSection struct {
-	BackendRoot     string   `yaml:"backend_root"`
-	RouterFile      string   `yaml:"router_file"`
-	WireFile        string   `yaml:"wire_file"`
-	FxDir           string   `yaml:"fx_dir"`
-	SQLCConfig      string   `yaml:"sqlc_config"`
-	FrontendRoots   []string `yaml:"frontend_roots"`
-	IgnorePackages  []string `yaml:"ignore_packages"`
-	IgnoreFunctions []string `yaml:"ignore_functions"`
-	CacheDir        string   `yaml:"cache_dir"`
-	MaxDepth        int      `yaml:"max_depth"`
-	Concurrency     int      `yaml:"concurrency"`
+	BackendRoot     string         `yaml:"backend_root"`
+	RouterFile      string         `yaml:"router_file"`
+	WireFile        string         `yaml:"wire_file"`
+	FxDir           string         `yaml:"fx_dir"`
+	SQLCConfig      string         `yaml:"sqlc_config"`
+	FrontendRoots   []string       `yaml:"frontend_roots"`
+	IgnorePackages  []string       `yaml:"ignore_packages"`
+	IgnoreFunctions []string       `yaml:"ignore_functions"`
+	CacheDir        string         `yaml:"cache_dir"`
+	MaxDepth        int            `yaml:"max_depth"`
+	Concurrency     int            `yaml:"concurrency"`
+	TypeChecking    bool           `yaml:"type_checking"`
+	GraphQL         *GraphQLConfig `yaml:"graphql,omitempty"`
+}
+
+// GraphQLConfig holds GraphQL-specific configuration.
+type GraphQLConfig struct {
+	SchemaDirs []string `yaml:"schema_dirs"`
 }
 
 // configFileName is the expected configuration file name.
@@ -60,7 +67,7 @@ func LoadGraphConfig(projectRoot string) (*GraphSection, error) {
 // ToPortsConfig converts a GraphSection to the ports.GraphConfig type used by
 // the application layer and domain services.
 func (s *GraphSection) ToPortsConfig() ports.GraphConfig {
-	return ports.GraphConfig{
+	cfg := ports.GraphConfig{
 		BackendRoot:     s.BackendRoot,
 		RouterFile:      s.RouterFile,
 		WireFile:        s.WireFile,
@@ -72,7 +79,12 @@ func (s *GraphSection) ToPortsConfig() ports.GraphConfig {
 		CacheDir:        s.CacheDir,
 		MaxDepth:        s.MaxDepth,
 		Concurrency:     s.Concurrency,
+		TypeChecking:    s.TypeChecking,
 	}
+	if s.GraphQL != nil {
+		cfg.GraphQLSchemaDirs = s.GraphQL.SchemaDirs
+	}
+	return cfg
 }
 
 // defaultGraphSection returns a GraphSection with production-ready defaults.
