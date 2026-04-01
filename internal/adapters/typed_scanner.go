@@ -82,19 +82,78 @@ func (s *TypedScanner) BuildFrom(projectRoot string, entryPoints []string, confi
 // If fallback is true, the caller should delegate to GoASTScanner.
 // Loaded packages are cached so that subsequent calls for the same backend
 // root reuse the type-checked ASTs without re-invoking packages.Load.
+// parseGoWorkPatterns reads a go.work file and returns load patterns
+// for each workspace module: ["./cmd/...", "./application/...", "./domain/...", ...]
+func parseGoWorkPatterns(workDir string) []string {
+	data, err := os.ReadFile(filepath.Join(workDir, "go.work"))
+	if err != nil {
+		return nil
+	}
+
+	var patterns []string
+	inUseBlock := false
+	for _, line := range strings.Split(string(data), "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "use (" {
+			inUseBlock = true
+			continue
+		}
+		if trimmed == ")" {
+			inUseBlock = false
+			continue
+		}
+		if inUseBlock && trimmed != "" && !strings.HasPrefix(trimmed, "//") {
+			// "./application" → "./application/..."
+			mod := strings.TrimPrefix(trimmed, "./")
+			patterns = append(patterns, "./"+mod+"/...")
+		}
+	}
+	return patterns
+}
+
+// findGoWorkDir walks upward from dir looking for a go.work file.
+// If found, returns the directory containing it. Otherwise returns dir unchanged.
+func findGoWorkDir(dir string) string {
+	current := dir
+	for {
+		if _, err := os.Stat(filepath.Join(current, "go.work")); err == nil {
+			return current
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			break
+		}
+		current = parent
+	}
+	return dir
+}
+
 func (s *TypedScanner) loadAndBuild(projectRoot string, config ports.GraphConfig, entryPoints []string) (graph *domain.Graph, fallback bool, err error) {
 	backendAbs := filepath.Join(projectRoot, config.BackendRoot)
 
 	// Reuse cached packages if available for the same backend root.
 	pkgs := s.cachedPkgs
 	if pkgs == nil || s.cachedFor != backendAbs {
+		// Use the directory containing go.work if it exists (workspace mode),
+		// otherwise use the backend root directly.
+		loadDir := findGoWorkDir(backendAbs)
+
 		cfg := &packages.Config{
 			Mode: packages.NeedTypes | packages.NeedSyntax | packages.NeedTypesInfo |
 				packages.NeedName | packages.NeedFiles | packages.NeedImports | packages.NeedDeps,
-			Dir: backendAbs,
+			Dir: loadDir,
 		}
 
-		pkgs, err = packages.Load(cfg, "./...")
+		// Determine load patterns. In workspace mode (go.work), ./... doesn't work;
+		// we must list each workspace module's ./module/... pattern explicitly.
+		patterns := []string{"./..."}
+		if _, err := os.Stat(filepath.Join(loadDir, "go.work")); err == nil {
+			if wsPatterns := parseGoWorkPatterns(loadDir); len(wsPatterns) > 0 {
+				patterns = wsPatterns
+			}
+		}
+
+		pkgs, err = packages.Load(cfg, patterns...)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "warning: type checking failed, falling back to AST scanner: %v\n", err)
 			return nil, true, nil
