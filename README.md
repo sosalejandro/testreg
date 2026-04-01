@@ -1563,7 +1563,8 @@ Tests:        12,694 lines (371 tests)
 Dependencies: 3 direct (cobra, yaml.v3, x/tools) + transitive
 ```
 
-> **Note:** Enabling `type_checking: true` in `.testreg.yaml` uses `go/types` for full type resolution. This requires the project to be buildable (`go build` must succeed) and increases scan time roughly 2-3x compared to the default `go/ast` heuristic mode. The binary size increase (~5.5 MB) is due to the `golang.org/x/tools` dependency.
+> **Experimental: `type_checking: true`**
+> This feature is under active development. The TypedScanner does not yet integrate the route parser, Wire/Fx resolver, or SQLC mapper — it produces fewer traced nodes than the default scanner and uses significantly more memory (~4 GB for large workspaces vs ~150 MB default). It is currently intended for struct field extraction in `testreg contract` only, not as a general replacement. The default `go/ast` scanner remains the recommended path for all commands.
 
 ---
 
