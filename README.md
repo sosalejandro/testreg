@@ -425,7 +425,7 @@ graph:
   ignore_functions: ["String", "Error", "MarshalJSON"] # Functions to skip (glob)
   cache_dir: .testreg-cache                            # AST cache directory
   max_depth: 10                                        # Max call graph depth
-  type_checking: false                                 # Enable go/types (opt-in)
+  type_checking: false                                 # Experimental — not recommended (see below)
   concurrency: 4                                       # Max parallel goroutines
   graphql:
     schema_dirs:                                       # GraphQL schema directories
@@ -614,7 +614,7 @@ Dependencies: 3 direct (cobra, yaml.v3, x/tools)
 
 Key optimization: `ExecuteAll` builds the graph once, then traces each feature against the shared graph. Before: 1m52s for 184 features. After: **14s** (7.9x speedup).
 
-> **Experimental: `type_checking: true`** -- Under active development. Uses significantly more memory (~4 GB vs ~150 MB). Currently intended for `testreg contract` struct field extraction only, not as a general replacement.
+> **Warning: `type_checking: true` is experimental and buggy.** It does not yet integrate the route parser, Wire/Fx resolver, or SQLC mapper — producing fewer traced nodes than the default scanner. Uses ~4 GB memory vs ~150 MB. **We do not recommend enabling this feature yet.**
 
 ---
 

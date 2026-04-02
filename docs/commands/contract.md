@@ -60,9 +60,11 @@ Shows only the handler and service layers.
 testreg contract auth.login --format markdown > docs/api/auth-login-contract.md
 ```
 
-### With type_checking enabled
+### With type_checking enabled (experimental)
 
-When `type_checking: true` is set in `.testreg.yaml`, the contract includes struct field tables at each layer showing exact input/output types with required/optional markers.
+> **Warning:** `type_checking: true` is experimental and buggy. It does not yet integrate the route parser, Wire/Fx resolver, or SQLC mapper — producing fewer traced nodes than the default scanner. It also uses significantly more memory (~4 GB vs ~150 MB for large workspaces). **We do not recommend enabling this feature yet.** The default `go/ast` scanner is the recommended path for all commands.
+
+When `type_checking: true` is set in `.testreg.yaml`, the contract includes struct field tables at each layer showing exact input/output types with required/optional markers. However, due to the limitations above, the output may be incomplete compared to the default scanner.
 
 ### GraphQL feature
 
