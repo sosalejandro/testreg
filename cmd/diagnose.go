@@ -68,10 +68,50 @@ func init() {
 	rootCmd.AddCommand(diagnoseCmd)
 }
 
+// diagnoseJSONOutput is the JSON-serializable representation of a diagnosis.
+type diagnoseJSONOutput struct {
+	FeatureID  string              `json:"feature_id"`
+	Symptom    string              `json:"symptom"`
+	BestMatch  *diagnoseRuleJSON   `json:"best_match,omitempty"`
+	AllMatches []diagnoseRuleJSON  `json:"all_matches,omitempty"`
+	CheckFiles []string            `json:"check_files,omitempty"`
+}
+
+type diagnoseRuleJSON struct {
+	Layer       string   `json:"layer"`
+	Confidence  float64  `json:"confidence"`
+	Description string   `json:"description"`
+	CheckOrder  []string `json:"check_order"`
+}
+
 func outputDiagnoseJSON(result *app.DiagnoseOutput) error {
+	out := diagnoseJSONOutput{
+		FeatureID:  result.FeatureID,
+		Symptom:    result.Symptom,
+		CheckFiles: result.CheckFiles,
+	}
+
+	if result.Rule != nil {
+		out.BestMatch = &diagnoseRuleJSON{
+			Layer:       result.Rule.Layer,
+			Confidence:  result.Rule.Confidence,
+			Description: result.Rule.Description,
+			CheckOrder:  result.Rule.CheckOrder,
+		}
+	}
+
+	for _, r := range result.AllRules {
+		out.AllMatches = append(out.AllMatches, diagnoseRuleJSON{
+			Layer:       r.Layer,
+			Confidence:  r.Confidence,
+			Description: r.Description,
+			CheckOrder:  r.CheckOrder,
+		})
+	}
+
 	encoder := json.NewEncoder(os.Stdout)
 	encoder.SetIndent("", "  ")
-	return encoder.Encode(result)
+	return encoder.Encode(out)
 }
 
 func outputDiagnoseTerminal(result *app.DiagnoseOutput) error {
@@ -83,7 +123,7 @@ func outputDiagnoseTerminal(result *app.DiagnoseOutput) error {
 		firstTrace = result.Trace.Traces[0]
 	}
 
-	renderer.RenderDiagnosis(result.FeatureID, result.Symptom, result.Rule, firstTrace, os.Stdout)
+	renderer.RenderDiagnosisMulti(result.FeatureID, result.Symptom, result.Rule, result.AllRules, firstTrace, os.Stdout)
 
 	if len(result.CheckFiles) > 0 {
 		fmt.Println("  Files to check (ordered by likelihood):")

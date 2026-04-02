@@ -372,108 +372,108 @@ func TestAdjacencyCache_InvalidatedOnAddEdge(t *testing.T) {
 
 func TestMatchSymptom_401(t *testing.T) {
 	rules := DefaultSymptomRules()
-	rule := MatchSymptom("got HTTP 401 Unauthorized from server", rules)
-	if rule == nil {
+	matches := MatchSymptom("got HTTP 401 Unauthorized from server", rules)
+	if len(matches) == 0 {
 		t.Fatal("expected match for 401")
 	}
-	if rule.Layer != "backend-auth" {
-		t.Errorf("layer = %s, want backend-auth", rule.Layer)
+	if matches[0].Layer != "backend-auth" {
+		t.Errorf("layer = %s, want backend-auth", matches[0].Layer)
 	}
 }
 
 func TestMatchSymptom_403(t *testing.T) {
 	rules := DefaultSymptomRules()
-	rule := MatchSymptom("403 Forbidden: permission denied", rules)
-	if rule == nil {
+	matches := MatchSymptom("403 Forbidden: permission denied", rules)
+	if len(matches) == 0 {
 		t.Fatal("expected match for 403")
 	}
-	if rule.Layer != "backend-auth" {
-		t.Errorf("layer = %s, want backend-auth", rule.Layer)
+	if matches[0].Layer != "backend-auth" {
+		t.Errorf("layer = %s, want backend-auth", matches[0].Layer)
 	}
 }
 
 func TestMatchSymptom_404(t *testing.T) {
 	rules := DefaultSymptomRules()
-	rule := MatchSymptom("Error: 404 Not Found", rules)
-	if rule == nil {
+	matches := MatchSymptom("Error: 404 Not Found", rules)
+	if len(matches) == 0 {
 		t.Fatal("expected match for 404")
 	}
-	if rule.Layer != "backend-routing" {
-		t.Errorf("layer = %s, want backend-routing", rule.Layer)
+	if matches[0].Layer != "backend-routing" {
+		t.Errorf("layer = %s, want backend-routing", matches[0].Layer)
 	}
 }
 
 func TestMatchSymptom_500(t *testing.T) {
 	rules := DefaultSymptomRules()
-	rule := MatchSymptom("500 Internal Server Error with panic in handler", rules)
-	if rule == nil {
+	matches := MatchSymptom("500 Internal Server Error with panic in handler", rules)
+	if len(matches) == 0 {
 		t.Fatal("expected match for 500/panic")
 	}
-	if rule.Layer != "backend-bug" {
-		t.Errorf("layer = %s, want backend-bug", rule.Layer)
+	if matches[0].Layer != "backend-bug" {
+		t.Errorf("layer = %s, want backend-bug", matches[0].Layer)
 	}
 }
 
 func TestMatchSymptom_SelectorNotFound(t *testing.T) {
 	rules := DefaultSymptomRules()
-	rule := MatchSymptom("TestingLibraryElementError: getByTestId failed", rules)
-	if rule == nil {
+	matches := MatchSymptom("TestingLibraryElementError: getByTestId failed", rules)
+	if len(matches) == 0 {
 		t.Fatal("expected match for selector not found")
 	}
-	if rule.Layer != "frontend" {
-		t.Errorf("layer = %s, want frontend", rule.Layer)
+	if matches[0].Layer != "frontend" {
+		t.Errorf("layer = %s, want frontend", matches[0].Layer)
 	}
 }
 
 func TestMatchSymptom_Timeout(t *testing.T) {
 	rules := DefaultSymptomRules()
-	rule := MatchSymptom("context deadline exceeded after 30s", rules)
-	if rule == nil {
+	matches := MatchSymptom("context deadline exceeded after 30s", rules)
+	if len(matches) == 0 {
 		t.Fatal("expected match for timeout")
 	}
-	if rule.Layer != "infra" {
-		t.Errorf("layer = %s, want infra", rule.Layer)
+	if matches[0].Layer != "infra" {
+		t.Errorf("layer = %s, want infra", matches[0].Layer)
 	}
 }
 
 func TestMatchSymptom_LoginFailed(t *testing.T) {
 	rules := DefaultSymptomRules()
-	rule := MatchSymptom("Login failed: invalid credentials provided", rules)
-	if rule == nil {
+	matches := MatchSymptom("Login failed: invalid credentials provided", rules)
+	if len(matches) == 0 {
 		t.Fatal("expected match for login failed")
 	}
-	if rule.Layer != "backend-auth" {
-		t.Errorf("layer = %s, want backend-auth", rule.Layer)
+	if matches[0].Layer != "backend-auth" {
+		t.Errorf("layer = %s, want backend-auth", matches[0].Layer)
 	}
 }
 
 func TestMatchSymptom_ConnectionRefused(t *testing.T) {
 	rules := DefaultSymptomRules()
-	rule := MatchSymptom("dial tcp 127.0.0.1:5432: connection refused", rules)
-	if rule == nil {
+	matches := MatchSymptom("dial tcp 127.0.0.1:5432: connection refused", rules)
+	if len(matches) == 0 {
 		t.Fatal("expected match for connection refused")
 	}
-	if rule.Layer != "infra" {
-		t.Errorf("layer = %s, want infra", rule.Layer)
+	if matches[0].Layer != "infra" {
+		t.Errorf("layer = %s, want infra", matches[0].Layer)
 	}
 }
 
 func TestMatchSymptom_EmptyResponse(t *testing.T) {
 	rules := DefaultSymptomRules()
-	rule := MatchSymptom("unexpected empty response from API", rules)
-	if rule == nil {
+	matches := MatchSymptom("unexpected empty response from API", rules)
+	if len(matches) == 0 {
 		t.Fatal("expected match for empty response")
 	}
-	if rule.Layer != "data" {
-		t.Errorf("layer = %s, want data", rule.Layer)
+	if matches[0].Layer != "data" {
+		t.Errorf("layer = %s, want data", matches[0].Layer)
 	}
 }
 
 func TestMatchSymptom_NoMatch(t *testing.T) {
 	rules := DefaultSymptomRules()
-	rule := MatchSymptom("everything works perfectly", rules)
-	if rule != nil {
-		t.Errorf("expected nil for non-matching symptom, got layer %s", rule.Layer)
+	matches := MatchSymptom("everything works perfectly", rules)
+	if len(matches) != 0 {
+		t.Errorf("expected no matches for non-matching symptom, got %d", len(matches))
 	}
 }
 
@@ -493,12 +493,12 @@ func TestMatchSymptom_CaseInsensitive(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			rule := MatchSymptom(tt.symptom, rules)
-			if rule == nil {
+			matches := MatchSymptom(tt.symptom, rules)
+			if len(matches) == 0 {
 				t.Fatalf("expected match for %q", tt.symptom)
 			}
-			if rule.Layer != tt.layer {
-				t.Errorf("layer = %s, want %s", rule.Layer, tt.layer)
+			if matches[0].Layer != tt.layer {
+				t.Errorf("layer = %s, want %s", matches[0].Layer, tt.layer)
 			}
 		})
 	}
@@ -507,15 +507,48 @@ func TestMatchSymptom_CaseInsensitive(t *testing.T) {
 func TestMatchSymptom_MalformedPattern(t *testing.T) {
 	rules := []SymptomRule{
 		{Pattern: `[invalid`, Layer: "bad", Description: "broken regex"},
-		{Pattern: `(?i)timeout`, Layer: "infra", Description: "timeout"},
+		{Pattern: `(?i)timeout`, Layer: "infra", Description: "timeout", Confidence: 0.8},
 	}
 
-	rule := MatchSymptom("request timeout", rules)
-	if rule == nil {
+	matches := MatchSymptom("request timeout", rules)
+	if len(matches) == 0 {
 		t.Fatal("should skip malformed rule and match the second")
 	}
-	if rule.Layer != "infra" {
-		t.Errorf("layer = %s, want infra", rule.Layer)
+	if matches[0].Layer != "infra" {
+		t.Errorf("layer = %s, want infra", matches[0].Layer)
+	}
+}
+
+func TestMatchSymptom_MultiMatch(t *testing.T) {
+	rules := DefaultSymptomRules()
+	// "500 internal server error: context deadline exceeded" should match both
+	// the 500 rule and the timeout rule.
+	matches := MatchSymptom("500 internal server error: context deadline exceeded", rules)
+	if len(matches) < 2 {
+		t.Fatalf("expected at least 2 matches, got %d", len(matches))
+	}
+
+	// Highest confidence should come first.
+	for i := 1; i < len(matches); i++ {
+		if matches[i].Confidence > matches[i-1].Confidence {
+			t.Errorf("matches not sorted by confidence: [%d]=%f > [%d]=%f",
+				i, matches[i].Confidence, i-1, matches[i-1].Confidence)
+		}
+	}
+}
+
+func TestMatchSymptom_ConfidenceRanking(t *testing.T) {
+	rules := DefaultSymptomRules()
+	// "unique constraint violation" is a high-confidence data rule.
+	matches := MatchSymptom("unique constraint violation on users.email", rules)
+	if len(matches) == 0 {
+		t.Fatal("expected match for unique constraint")
+	}
+	if matches[0].Confidence < 0.9 {
+		t.Errorf("expected high confidence for unique constraint, got %f", matches[0].Confidence)
+	}
+	if matches[0].Layer != "data" {
+		t.Errorf("layer = %s, want data", matches[0].Layer)
 	}
 }
 

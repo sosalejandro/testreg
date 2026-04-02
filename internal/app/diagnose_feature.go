@@ -11,7 +11,8 @@ import (
 type DiagnoseOutput struct {
 	FeatureID  string
 	Symptom    string
-	Rule       *domain.SymptomRule
+	Rule       *domain.SymptomRule   // best match (highest confidence)
+	AllRules   []*domain.SymptomRule // all matching rules, ranked by confidence
 	Trace      *TraceOutput
 	CheckFiles []string
 }
@@ -32,9 +33,9 @@ func NewDiagnoseFeatureUseCase(traceUC *TraceFeatureUseCase) *DiagnoseFeatureUse
 //  3. Filter the trace to show relevant nodes based on the rule's CheckOrder.
 //  4. Return the diagnosis with check order and relevant files.
 func (uc *DiagnoseFeatureUseCase) Execute(registryDir, featureID, symptom string, config ports.GraphConfig) (*DiagnoseOutput, error) {
-	// Match symptom against rules.
+	// Match symptom against all rules, ranked by confidence.
 	rules := domain.DefaultSymptomRules()
-	rule := domain.MatchSymptom(symptom, rules)
+	allMatches := domain.MatchSymptom(symptom, rules)
 
 	// Trace the feature graph regardless of whether a rule matched.
 	traceOutput, err := uc.traceUC.Execute(registryDir, featureID, config)
@@ -42,16 +43,19 @@ func (uc *DiagnoseFeatureUseCase) Execute(registryDir, featureID, symptom string
 		return nil, fmt.Errorf("tracing feature %q: %w", featureID, err)
 	}
 
-	// Extract files to check, ordered by the rule's check order.
+	// Use the highest-confidence match for file ordering.
+	var bestRule *domain.SymptomRule
 	var checkFiles []string
-	if rule != nil {
-		checkFiles = extractCheckFiles(traceOutput, rule.CheckOrder)
+	if len(allMatches) > 0 {
+		bestRule = allMatches[0]
+		checkFiles = extractCheckFiles(traceOutput, bestRule.CheckOrder)
 	}
 
 	return &DiagnoseOutput{
 		FeatureID:  featureID,
 		Symptom:    symptom,
-		Rule:       rule,
+		Rule:       bestRule,
+		AllRules:   allMatches,
 		Trace:      traceOutput,
 		CheckFiles: checkFiles,
 	}, nil

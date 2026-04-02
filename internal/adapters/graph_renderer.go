@@ -479,6 +479,13 @@ func toJSONTraceNode(tn *domain.TraceNode) *jsonTraceNode {
 // feature being diagnosed, the matched symptom rule, and the relevant
 // portion of the dependency trace.
 func (r *GraphRenderer) RenderDiagnosis(feature string, symptom string, rule *domain.SymptomRule, trace *domain.TraceResult, w io.Writer) {
+	r.RenderDiagnosisMulti(feature, symptom, rule, nil, trace, w)
+}
+
+// RenderDiagnosisMulti outputs the diagnosis report with support for multiple
+// matching rules. The primary rule is shown in full, and secondary matches
+// are listed with their confidence and layer.
+func (r *GraphRenderer) RenderDiagnosisMulti(feature string, symptom string, rule *domain.SymptomRule, allRules []*domain.SymptomRule, trace *domain.TraceResult, w io.Writer) {
 	fmt.Fprintln(w)
 	fmt.Fprintf(w, "  %s\n", r.colorize(colorBold, "Diagnosis Report"))
 	fmt.Fprintf(w, "  Feature:  %s\n", feature)
@@ -486,12 +493,24 @@ func (r *GraphRenderer) RenderDiagnosis(feature string, symptom string, rule *do
 	fmt.Fprintln(w)
 
 	if rule != nil {
-		fmt.Fprintf(w, "  %s\n", r.colorize(colorBold, "Matched Rule"))
-		fmt.Fprintf(w, "  Pattern:      %s\n", rule.Pattern)
+		fmt.Fprintf(w, "  %s\n", r.colorize(colorBold, "Best Match"))
 		fmt.Fprintf(w, "  Layer:        %s\n", rule.Layer)
+		fmt.Fprintf(w, "  Confidence:   %d%%\n", int(rule.Confidence*100))
 		fmt.Fprintf(w, "  Description:  %s\n", r.colorize(colorGreen, rule.Description))
 		fmt.Fprintf(w, "  Check order:  %s\n", strings.Join(rule.CheckOrder, " -> "))
 		fmt.Fprintln(w)
+
+		// Show secondary matches if there are any beyond the primary.
+		if len(allRules) > 1 {
+			fmt.Fprintf(w, "  %s\n", r.colorize(colorBold, "Also Matched"))
+			for _, secondary := range allRules[1:] {
+				fmt.Fprintf(w, "    %d%% %s — %s\n",
+					int(secondary.Confidence*100),
+					r.colorize(colorCyan, secondary.Layer),
+					secondary.Description)
+			}
+			fmt.Fprintln(w)
+		}
 	} else {
 		fmt.Fprintf(w, "  %s\n", r.colorize(colorYellow, "No matching diagnostic rule found for this symptom."))
 		fmt.Fprintln(w)

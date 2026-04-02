@@ -263,7 +263,7 @@ func TestGraphRendererRenderDiagnosis(t *testing.T) {
 		{"report header", "Diagnosis Report"},
 		{"feature", "auth.login"},
 		{"symptom", "401 Unauthorized"},
-		{"matched rule", "Matched Rule"},
+		{"matched rule", "Best Match"},
 		{"layer", "backend-auth"},
 		{"description", "Authentication failure"},
 		{"check order", "handler -> service"},
