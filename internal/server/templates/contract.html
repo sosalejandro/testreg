@@ -1,0 +1,92 @@
+{{define "contract-content"}}
+<div class="p-6 max-w-5xl mx-auto">
+
+    <!-- Controls Bar -->
+    <div class="flex flex-wrap items-center justify-between mb-8 bg-surface-container-low p-3 rounded-lg gap-3 border border-outline-variant/10">
+        <div class="flex items-center gap-4">
+            <!-- Feature Selector -->
+            <form hx-get="/pages/contract"
+                hx-target="#page-content"
+                hx-swap="innerHTML"
+                hx-push-url="true"
+                class="flex items-center gap-3">
+                <div class="bg-surface-container-highest px-4 py-1.5 rounded flex items-center gap-2 border border-outline-variant/30">
+                    <select name="feature"
+                        class="bg-transparent border-none text-primary font-mono text-sm focus:ring-0 pr-6 appearance-none"
+                        onchange="this.form.submit()">
+                        {{range .AllFeatures}}
+                        <option value="{{.}}" {{if eq . $.Contract.FeatureID}}selected{{end}}>{{.}}</option>
+                        {{end}}
+                    </select>
+                    <span class="material-symbols-outlined text-outline text-sm pointer-events-none">expand_more</span>
+                </div>
+            </form>
+        </div>
+        <div class="flex items-center gap-2 bg-surface-container-highest px-3 py-1.5 rounded border border-outline-variant/20">
+            <span class="w-2 h-2 rounded-full bg-primary animate-pulse"></span>
+            <span class="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">{{.Contract.LayerCount}} layers detected</span>
+        </div>
+    </div>
+
+    {{if .Contract}}
+    <!-- Entry Point Banner -->
+    <div class="mb-8">
+        <div class="bg-primary/10 border-l-4 border-primary p-4 rounded-r-lg flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <span class="text-xs font-bold bg-primary text-on-primary px-2 py-0.5 rounded">ENTRY</span>
+                <code class="font-mono text-primary font-bold">{{.Contract.EntryPoint}}</code>
+            </div>
+            <span class="text-[10px] text-slate-500 font-mono">{{.Contract.FeatureID}}</span>
+        </div>
+    </div>
+
+    <!-- Chain Cards -->
+    <div class="space-y-4 relative">
+        <!-- Connection line -->
+        <div class="absolute left-6 top-8 bottom-8 w-px bg-gradient-to-b from-primary via-tertiary to-transparent opacity-20 hidden md:block"></div>
+
+        {{range $i, $layer := .Contract.Layers}}
+        <div class="relative pl-0 md:pl-12 group">
+            <div class="bg-surface-container p-4 rounded-lg border-l-4 {{layerBorderClass $layer.Kind}} shadow-sm hover:bg-surface-container-high transition-colors">
+                <div class="flex items-start justify-between">
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-center gap-2 mb-1">
+                            <span class="text-[10px] font-bold {{layerLabelClass $layer.Kind}} uppercase">{{$layer.Kind}}</span>
+                            <code class="text-xs text-on-surface-variant font-mono truncate">{{$layer.NodeID}}</code>
+                        </div>
+                        <code class="text-sm text-on-surface font-mono font-semibold">{{$layer.FunctionName}}</code>
+                        {{if $layer.Signature}}
+                        <div class="mt-2 font-mono text-xs text-on-surface-variant bg-surface-container-lowest px-3 py-1.5 rounded">{{$layer.Signature}}</div>
+                        {{end}}
+                    </div>
+                    <div class="ml-4 shrink-0">
+                        <span class="text-[10px] font-mono text-slate-600">#{{add $i 1}}</span>
+                    </div>
+                </div>
+
+                {{if $layer.Calls}}
+                <div class="mt-3 pt-3 border-t border-outline-variant/10">
+                    <span class="text-[10px] uppercase text-slate-500 font-bold tracking-wider">Calls</span>
+                    <div class="flex flex-wrap gap-2 mt-1.5">
+                        {{range $layer.Calls}}
+                        <span class="px-2 py-0.5 bg-surface-container-lowest rounded font-mono text-[11px] text-on-surface-variant">{{.}}</span>
+                        {{end}}
+                    </div>
+                </div>
+                {{end}}
+            </div>
+        </div>
+        {{end}}
+    </div>
+
+    {{else}}
+    <!-- Empty state -->
+    <div class="flex flex-col items-center justify-center py-24 text-center">
+        <span class="material-symbols-outlined text-5xl text-slate-700 mb-4">description</span>
+        <h3 class="text-slate-400 font-semibold mb-2">Select a feature</h3>
+        <p class="text-slate-600 text-sm">Choose a feature from the selector above to view its contract trace.</p>
+    </div>
+    {{end}}
+
+</div>
+{{end}}

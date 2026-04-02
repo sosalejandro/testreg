@@ -1,0 +1,68 @@
+{{define "diff-content"}}
+<div class="p-6 max-w-5xl mx-auto space-y-6">
+
+    <div class="mb-6">
+        <h1 class="text-2xl font-bold tracking-tight text-on-surface">Progress Tracking</h1>
+        <p class="text-on-surface-variant text-sm mt-1">Coverage changes between registry snapshots.</p>
+    </div>
+
+    {{if .Diff}}
+    <!-- Summary Banner -->
+    <div class="bg-surface-container-low p-4 rounded-lg border border-outline-variant/10 flex flex-wrap items-center gap-6">
+        <div class="flex flex-col">
+            <span class="text-[10px] uppercase font-bold text-slate-500 tracking-widest">Features Changed</span>
+            <span class="font-mono text-xl font-black text-on-surface">{{.Diff.Changed}}</span>
+        </div>
+        <div class="flex flex-col">
+            <span class="text-[10px] uppercase font-bold text-emerald-500 tracking-widest">Improved</span>
+            <span class="font-mono text-xl font-black text-emerald-400">+{{.Diff.Improved}}</span>
+        </div>
+        <div class="flex flex-col">
+            <span class="text-[10px] uppercase font-bold text-red-500 tracking-widest">Regressed</span>
+            <span class="font-mono text-xl font-black text-red-400">-{{.Diff.Regressed}}</span>
+        </div>
+        <div class="flex flex-col">
+            <span class="text-[10px] uppercase font-bold text-slate-500 tracking-widest">New Features</span>
+            <span class="font-mono text-xl font-black text-primary">{{.Diff.Added}}</span>
+        </div>
+    </div>
+
+    <!-- Changes Table -->
+    <section class="bg-surface-container rounded-lg border border-outline-variant/10 overflow-hidden shadow-sm">
+        <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs border-collapse">
+                <thead>
+                    <tr class="bg-surface-container-low border-b border-outline-variant/10">
+                        <th class="px-4 py-2 font-bold text-slate-500 uppercase tracking-tighter">Feature</th>
+                        <th class="px-4 py-2 font-bold text-slate-500 uppercase tracking-tighter">Change</th>
+                        <th class="px-4 py-2 font-bold text-slate-500 uppercase tracking-tighter">Before</th>
+                        <th class="px-4 py-2 font-bold text-slate-500 uppercase tracking-tighter">After</th>
+                        <th class="px-4 py-2 font-bold text-slate-500 uppercase tracking-tighter">Delta</th>
+                    </tr>
+                </thead>
+                <tbody class="font-mono divide-y divide-outline-variant/5">
+                    {{range .Diff.Rows}}
+                    <tr class="hover:bg-slate-800/30 transition-colors">
+                        <td class="px-4 py-3 text-slate-100">{{.ID}}</td>
+                        <td class="px-4 py-3">
+                            <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase {{.ChangeClass}}">{{.Change}}</span>
+                        </td>
+                        <td class="px-4 py-3 text-slate-400">{{.Before}}</td>
+                        <td class="px-4 py-3 text-slate-300">{{.After}}</td>
+                        <td class="px-4 py-3 {{.DeltaClass}} font-bold">{{.Delta}}</td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+    </section>
+    {{else}}
+    <div class="flex flex-col items-center justify-center py-24 text-center">
+        <span class="material-symbols-outlined text-5xl text-slate-700 mb-4">difference</span>
+        <h3 class="text-slate-400 font-semibold mb-2">No diff data available</h3>
+        <p class="text-slate-600 text-sm max-w-sm">Run <code class="font-mono text-primary">testreg diff</code> to generate a comparison between registry states.</p>
+    </div>
+    {{end}}
+
+</div>
+{{end}}

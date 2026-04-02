@@ -1,0 +1,149 @@
+{{define "overview-content"}}
+<div class="p-6 max-w-6xl mx-auto space-y-6">
+
+    <!-- Row 1: Health by Priority -->
+    <section class="bg-surface-container rounded-lg border border-outline-variant/10 overflow-hidden shadow-sm">
+        <div class="px-4 py-3 border-b border-outline-variant/10 flex items-center justify-between">
+            <h2 class="text-xs font-bold uppercase tracking-widest text-slate-400">Health by Priority</h2>
+            <span class="text-[10px] font-mono text-slate-500">AGGREGATE</span>
+        </div>
+        <div class="p-6 grid grid-cols-2 lg:grid-cols-4 gap-8">
+            {{range .Overview.PriorityRings}}
+            <div class="flex flex-col items-center">
+                <div class="relative w-16 h-16 mb-3">
+                    <svg class="donut-ring w-full h-full" viewBox="0 0 32 32">
+                        <circle class="stroke-slate-800" cx="16" cy="16" fill="transparent" r="14" stroke-width="3"></circle>
+                        <circle class="{{.StrokeClass}}" cx="16" cy="16" fill="transparent" r="14"
+                            stroke-dasharray="88 88"
+                            stroke-dashoffset="{{.DashOffset}}"
+                            stroke-linecap="round" stroke-width="3"></circle>
+                    </svg>
+                    <div class="absolute inset-0 flex items-center justify-center font-mono text-sm font-bold text-slate-100">{{.Pct}}%</div>
+                </div>
+                <span class="text-[10px] font-bold uppercase {{.LabelClass}} mb-1">{{.Label}}</span>
+                <span class="text-[11px] text-slate-500 font-mono">{{.AtTarget}}/{{.Total}} at target</span>
+            </div>
+            {{end}}
+        </div>
+        <div class="px-6 py-4 bg-surface-container-low border-t border-outline-variant/5">
+            <div class="flex justify-between items-center mb-2">
+                <span class="text-[11px] text-slate-400 font-medium">System-wide Target Fulfillment</span>
+                <span class="text-[11px] font-mono text-emerald-400 font-bold">{{.Status.AtTargetPct}}%</span>
+            </div>
+            <div class="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                <div class="bg-emerald-500 h-full rounded-full" style="width: {{.Status.AtTargetPct}}%"></div>
+            </div>
+            <div class="mt-2 text-[10px] text-slate-500 font-mono">{{.Status.AtTarget}} of {{.Status.TotalFeatures}} features at target ({{.Status.AtTargetPct}}%)</div>
+        </div>
+    </section>
+
+    <!-- Row 2: Coverage Matrix & Performance Score -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- Coverage Matrix -->
+        <section class="bg-surface-container rounded-lg border border-outline-variant/10 overflow-hidden shadow-sm">
+            <div class="px-4 py-3 border-b border-outline-variant/10">
+                <h2 class="text-xs font-bold uppercase tracking-widest text-slate-400">Coverage Matrix</h2>
+            </div>
+            <div class="p-5 space-y-5">
+                {{range .Overview.CoverageBars}}
+                <div class="space-y-1.5">
+                    <div class="flex justify-between items-center">
+                        <span class="text-xs font-medium text-slate-300">{{.Label}}</span>
+                        <span class="text-xs font-mono {{.PctClass}}">{{.Pct}}%</span>
+                    </div>
+                    <div class="w-full bg-slate-800 h-2 rounded-sm overflow-hidden">
+                        <div class="{{.BarClass}} h-full" style="width: {{.Pct}}%"></div>
+                    </div>
+                </div>
+                {{end}}
+            </div>
+        </section>
+
+        <!-- Domain Summary -->
+        <section class="bg-surface-container rounded-lg border border-outline-variant/10 overflow-hidden shadow-sm">
+            <div class="px-4 py-3 border-b border-outline-variant/10">
+                <h2 class="text-xs font-bold uppercase tracking-widest text-slate-400">By Domain</h2>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left font-sans text-xs border-collapse">
+                    <thead>
+                        <tr class="bg-surface-container-low border-b border-outline-variant/10">
+                            <th class="px-4 py-2 font-bold text-slate-500 uppercase tracking-tighter">Domain</th>
+                            <th class="px-4 py-2 font-bold text-slate-500 uppercase tracking-tighter text-right">Features</th>
+                            <th class="px-4 py-2 font-bold text-slate-500 uppercase tracking-tighter text-right">Unit</th>
+                            <th class="px-4 py-2 font-bold text-slate-500 uppercase tracking-tighter text-right">Integ</th>
+                            <th class="px-4 py-2 font-bold text-slate-500 uppercase tracking-tighter text-right">E2E</th>
+                        </tr>
+                    </thead>
+                    <tbody class="font-mono divide-y divide-outline-variant/5">
+                        {{range .Status.DomainData}}
+                        <tr class="hover:bg-slate-800/30 transition-colors">
+                            <td class="px-4 py-2 text-slate-100">{{.Domain}}</td>
+                            <td class="px-4 py-2 text-slate-400 text-right">{{.Total}}</td>
+                            <td class="px-4 py-2 text-right {{if gt .UnitCovered 0}}text-emerald-400{{else}}text-red-400{{end}}">{{.UnitCovered}}</td>
+                            <td class="px-4 py-2 text-right {{if gt .IntegrationCovered 0}}text-emerald-400{{else}}text-slate-500{{end}}">{{.IntegrationCovered}}</td>
+                            <td class="px-4 py-2 text-right {{if gt .E2ECovered 0}}text-emerald-400{{else}}text-slate-500{{end}}">{{.E2ECovered}}</td>
+                        </tr>
+                        {{end}}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </div>
+
+    <!-- Row 3: Top Sprint Priorities -->
+    <section class="bg-surface-container rounded-lg border border-outline-variant/10 overflow-hidden shadow-sm">
+        <div class="px-4 py-3 border-b border-outline-variant/10 flex items-center justify-between">
+            <h2 class="text-xs font-bold uppercase tracking-widest text-slate-400">Top Sprint Priorities</h2>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full text-left font-sans text-xs border-collapse">
+                <thead>
+                    <tr class="bg-surface-container-low border-b border-outline-variant/10">
+                        <th class="px-4 py-2 font-bold text-slate-500 uppercase tracking-tighter">Score</th>
+                        <th class="px-4 py-2 font-bold text-slate-500 uppercase tracking-tighter">Priority</th>
+                        <th class="px-4 py-2 font-bold text-slate-500 uppercase tracking-tighter">Feature</th>
+                        <th class="px-4 py-2 font-bold text-slate-500 uppercase tracking-tighter">Health → Target</th>
+                    </tr>
+                </thead>
+                <tbody class="font-mono divide-y divide-outline-variant/5">
+                    {{range .Overview.SprintTop}}
+                    <tr class="hover:bg-slate-800/30 transition-colors cursor-pointer"
+                        hx-get="/pages/features?feature={{.ID}}"
+                        hx-target="#page-content"
+                        hx-swap="innerHTML"
+                        hx-push-url="/features">
+                        <td class="px-4 py-3 text-slate-300">{{printf "%.2f" .Score}}</td>
+                        <td class="px-4 py-3">
+                            <div class="flex items-center gap-2">
+                                <span class="w-2 h-2 rounded-full {{.PriorityDot}}"></span>
+                                <span class="{{.PriorityText}} font-bold">{{.Priority}}</span>
+                            </div>
+                        </td>
+                        <td class="px-4 py-3 text-slate-100">{{.ID}}</td>
+                        <td class="px-4 py-3">
+                            <div class="flex items-center gap-3">
+                                <div class="w-32 bg-slate-800 h-1.5 rounded-full overflow-hidden relative">
+                                    <div class="{{.TargetBg}} h-full absolute top-0 left-0" style="width: {{.TargetPct}}%"></div>
+                                    <div class="{{.HealthBg}} h-full relative z-10" style="width: {{.HealthPct}}%"></div>
+                                </div>
+                                <span class="text-[10px] text-slate-400">{{.HealthPct}}% → {{.TargetPct}}%</span>
+                            </div>
+                        </td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+        <div class="px-4 py-3 border-t border-outline-variant/10 text-center">
+            <a class="text-[11px] font-bold text-blue-400 hover:text-blue-300 transition-colors"
+                href="/sprint"
+                hx-get="/pages/sprint"
+                hx-target="#page-content"
+                hx-swap="innerHTML"
+                hx-push-url="/sprint">→ View all sprint priorities</a>
+        </div>
+    </section>
+
+</div>
+{{end}}

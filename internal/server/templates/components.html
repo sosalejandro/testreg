@@ -1,0 +1,163 @@
+{{/* ============================================================
+     TESTREG DESIGN SYSTEM — Reusable Component Partials
+     Design tokens from: docs/stitch/testreg_core/DESIGN.md
+     ============================================================ */}}
+
+{{/* -----------------------------------------------------------
+     Priority Badge
+     Data: .Priority (string: critical|high|medium|low)
+     Usage: {{template "badge-priority" "critical"}}
+     ----------------------------------------------------------- */}}
+{{define "badge-priority"}}
+{{if eq . "critical"}}
+<span class="inline-flex items-center gap-1.5">
+    <span class="w-2 h-2 rounded-full bg-red-500"></span>
+    <span class="text-red-500 font-mono text-[11px] font-bold uppercase">P0</span>
+</span>
+{{else if eq . "high"}}
+<span class="inline-flex items-center gap-1.5">
+    <span class="w-2 h-2 rounded-full bg-yellow-500"></span>
+    <span class="text-yellow-500 font-mono text-[11px] font-bold uppercase">P1</span>
+</span>
+{{else if eq . "medium"}}
+<span class="inline-flex items-center gap-1.5">
+    <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+    <span class="text-emerald-500 font-mono text-[11px] font-bold uppercase">P2</span>
+</span>
+{{else}}
+<span class="inline-flex items-center gap-1.5">
+    <span class="w-2 h-2 rounded-full bg-slate-500"></span>
+    <span class="text-slate-400 font-mono text-[11px] font-bold uppercase">P3</span>
+</span>
+{{end}}
+{{end}}
+
+{{/* -----------------------------------------------------------
+     Status Badge
+     Data: .Status (string: covered|partial|missing|failing|not-applicable)
+     Usage: {{template "badge-status" "covered"}}
+     ----------------------------------------------------------- */}}
+{{define "badge-status"}}
+{{if eq . "covered"}}
+<span class="px-2 py-0.5 rounded-sm text-[10px] font-bold uppercase bg-emerald-500/10 text-emerald-400">covered</span>
+{{else if eq . "partial"}}
+<span class="px-2 py-0.5 rounded-sm text-[10px] font-bold uppercase bg-yellow-500/10 text-yellow-400">partial</span>
+{{else if eq . "failing"}}
+<span class="px-2 py-0.5 rounded-sm text-[10px] font-bold uppercase bg-red-500/10 text-red-400">failing</span>
+{{else if eq . "not-applicable"}}
+<span class="px-2 py-0.5 rounded-sm text-[10px] font-bold uppercase bg-slate-800 text-slate-600">n/a</span>
+{{else}}
+<span class="px-2 py-0.5 rounded-sm text-[10px] font-bold uppercase bg-slate-800 text-slate-500">missing</span>
+{{end}}
+{{end}}
+
+{{/* -----------------------------------------------------------
+     Stat Card
+     Data: struct{ Label, Value, ValueClass string }
+     Usage: {{template "stat-card" .}}
+     ----------------------------------------------------------- */}}
+{{define "stat-card"}}
+<div class="bg-surface-container p-4 rounded-lg border border-outline-variant/10">
+    <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">{{.Label}}</p>
+    <p class="font-mono text-2xl font-black {{if .ValueClass}}{{.ValueClass}}{{else}}text-on-surface{{end}}">{{.Value}}</p>
+    {{if .Sub}}<p class="text-[11px] text-slate-500 mt-1">{{.Sub}}</p>{{end}}
+</div>
+{{end}}
+
+{{/* -----------------------------------------------------------
+     Progress Bar
+     Data: struct{ Label, PctClass, BarClass string; Pct int }
+     Usage: {{template "progress-bar" .}}
+     ----------------------------------------------------------- */}}
+{{define "progress-bar"}}
+<div class="space-y-1.5">
+    <div class="flex justify-between items-center">
+        <span class="text-xs font-medium text-slate-300">{{.Label}}</span>
+        <span class="text-xs font-mono font-bold {{.PctClass}}">{{.Pct}}%</span>
+    </div>
+    <div class="w-full bg-slate-800 h-2 rounded-sm overflow-hidden">
+        <div class="{{.BarClass}} h-full transition-all duration-500" style="width: {{.Pct}}%"></div>
+    </div>
+</div>
+{{end}}
+
+{{/* -----------------------------------------------------------
+     Donut Ring
+     Data: struct{ Pct int; StrokeClass, LabelClass, Label string; AtTarget, Total int }
+     Usage: {{template "donut-ring" .}}
+     ----------------------------------------------------------- */}}
+{{define "donut-ring"}}
+<div class="flex flex-col items-center">
+    <div class="relative w-16 h-16 mb-3">
+        <svg class="donut-ring w-full h-full" viewBox="0 0 32 32">
+            <circle class="stroke-slate-800" cx="16" cy="16" fill="transparent" r="14" stroke-width="3"></circle>
+            <circle class="{{.StrokeClass}}" cx="16" cy="16" fill="transparent" r="14"
+                stroke-dasharray="88 88"
+                stroke-dashoffset="{{.DashOffset}}"
+                stroke-linecap="round" stroke-width="3"></circle>
+        </svg>
+        <div class="absolute inset-0 flex items-center justify-center font-mono text-sm font-bold text-slate-100">{{.Pct}}%</div>
+    </div>
+    <span class="text-[10px] font-bold uppercase {{.LabelClass}} mb-1">{{.Label}}</span>
+    <span class="text-[11px] text-slate-500 font-mono">{{.AtTarget}}/{{.Total}} at target</span>
+</div>
+{{end}}
+
+{{/* -----------------------------------------------------------
+     Layer Kind Badge (for contract/trace views)
+     Data: string (kind)
+     Usage: {{template "layer-kind" "handler"}}
+     ----------------------------------------------------------- */}}
+{{define "layer-kind"}}
+{{if eq . "handler"}}
+<span class="text-[10px] font-bold text-primary uppercase">handler</span>
+{{else if eq . "service"}}
+<span class="text-[10px] font-bold text-tertiary uppercase">service</span>
+{{else if eq . "repository"}}
+<span class="text-[10px] font-bold text-secondary uppercase">repository</span>
+{{else if eq . "query"}}
+<span class="text-[10px] font-bold text-yellow-500 uppercase">query</span>
+{{else if eq . "endpoint"}}
+<span class="text-[10px] font-bold text-primary uppercase">endpoint</span>
+{{else}}
+<span class="text-[10px] font-bold text-on-surface-variant uppercase">{{.}}</span>
+{{end}}
+{{end}}
+
+{{/* -----------------------------------------------------------
+     Section Header
+     Data: struct{ Title, Code string }
+     Usage: {{template "section-header" .}}
+     ----------------------------------------------------------- */}}
+{{define "section-header"}}
+<div class="px-4 py-3 border-b border-outline-variant/10 flex items-center justify-between">
+    <h2 class="text-xs font-bold uppercase tracking-widest text-slate-400">{{.Title}}</h2>
+    {{if .Code}}<span class="text-[10px] font-mono text-slate-500">{{.Code}}</span>{{end}}
+</div>
+{{end}}
+
+{{/* -----------------------------------------------------------
+     Empty State
+     Data: struct{ Icon, Title, Body string }
+     Usage: {{template "empty-state" .}}
+     ----------------------------------------------------------- */}}
+{{define "empty-state"}}
+<div class="flex flex-col items-center justify-center py-24 text-center">
+    <span class="material-symbols-outlined text-5xl text-slate-700 mb-4">{{.Icon}}</span>
+    <h3 class="text-slate-400 font-semibold mb-2">{{.Title}}</h3>
+    <p class="text-slate-600 text-sm max-w-sm">{{.Body}}</p>
+</div>
+{{end}}
+
+{{/* -----------------------------------------------------------
+     Check Mark Cell (for table coverage columns)
+     Data: bool
+     Usage: {{template "check-cell" .UnitCovered}}
+     ----------------------------------------------------------- */}}
+{{define "check-cell"}}
+{{if .}}
+<span class="text-emerald-400 font-mono">✓</span>
+{{else}}
+<span class="text-slate-700 font-mono">—</span>
+{{end}}
+{{end}}

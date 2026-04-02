@@ -1,0 +1,119 @@
+{{define "features-content"}}
+<div class="p-6 max-w-6xl mx-auto">
+
+    <!-- Header -->
+    <div class="mb-6">
+        <h1 class="text-2xl font-bold tracking-tight text-on-surface">Features Analysis</h1>
+        <p class="text-on-surface-variant text-sm mt-1">Coverage and health across all registered features.</p>
+    </div>
+
+    <!-- Filter Bar -->
+    <div class="bg-surface-container-low p-3 rounded-lg flex flex-wrap items-center justify-between gap-3 mb-6 border border-outline-variant/10">
+        <div class="flex items-center gap-3">
+            <div class="relative flex items-center">
+                <span class="material-symbols-outlined absolute left-3 text-outline text-sm">search</span>
+                <input type="text"
+                    placeholder="Filter features..."
+                    class="bg-surface-container-lowest border-none text-on-surface text-xs pl-9 pr-4 py-2 rounded focus:ring-1 focus:ring-primary/40 font-mono w-48"
+                    hx-get="/pages/features"
+                    hx-trigger="keyup changed delay:300ms"
+                    hx-target="#feature-table-body"
+                    hx-swap="innerHTML"
+                    name="q"
+                    hx-include="[name='priority'],[name='q']"/>
+            </div>
+            <select name="priority"
+                class="bg-surface-container-lowest border-none text-on-surface-variant text-xs py-2 px-3 rounded focus:ring-1 focus:ring-primary/40"
+                hx-get="/pages/features"
+                hx-trigger="change"
+                hx-target="#feature-table-body"
+                hx-swap="innerHTML"
+                hx-include="[name='q'],[name='priority']">
+                <option value="">All Priorities</option>
+                <option value="critical">Critical</option>
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+            </select>
+        </div>
+        <div class="text-[11px] font-mono text-slate-500">
+            {{len .Features.Rows}} features
+        </div>
+    </div>
+
+    <!-- Table -->
+    <section class="bg-surface-container rounded-lg border border-outline-variant/10 overflow-hidden shadow-sm">
+        <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs border-collapse">
+                <thead>
+                    <tr class="bg-surface-container-low border-b border-outline-variant/10">
+                        <th class="px-4 py-2 font-bold text-slate-500 uppercase tracking-tighter">Feature</th>
+                        <th class="px-4 py-2 font-bold text-slate-500 uppercase tracking-tighter">Priority</th>
+                        <th class="px-4 py-2 font-bold text-slate-500 uppercase tracking-tighter">Status</th>
+                        <th class="px-4 py-2 font-bold text-slate-500 uppercase tracking-tighter text-right">Unit</th>
+                        <th class="px-4 py-2 font-bold text-slate-500 uppercase tracking-tighter text-right">Integ</th>
+                        <th class="px-4 py-2 font-bold text-slate-500 uppercase tracking-tighter text-right">E2E</th>
+                        <th class="px-4 py-2 font-bold text-slate-500 uppercase tracking-tighter">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="feature-table-body" class="font-mono divide-y divide-outline-variant/5">
+                    {{template "feature-rows" .Features}}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+</div>
+{{end}}
+
+{{define "feature-rows"}}
+{{range .Rows}}
+<tr class="hover:bg-slate-800/30 transition-colors group">
+    <td class="px-4 py-3">
+        <div class="flex flex-col">
+            <span class="text-slate-100 font-semibold">{{.ID}}</span>
+            <span class="text-slate-500 text-[10px]">{{.Domain}}</span>
+        </div>
+    </td>
+    <td class="px-4 py-3">
+        <div class="flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full {{.PriorityDot}}"></span>
+            <span class="{{.PriorityText}} text-[11px] font-bold uppercase">{{.Priority}}</span>
+        </div>
+    </td>
+    <td class="px-4 py-3">
+        <span class="px-2 py-0.5 rounded-sm text-[10px] font-bold uppercase {{.StatusClass}}">{{.Status}}</span>
+    </td>
+    <td class="px-4 py-3 text-right {{if .UnitCovered}}text-emerald-400{{else}}text-slate-600{{end}}">
+        {{if .UnitCovered}}✓{{else}}—{{end}}
+    </td>
+    <td class="px-4 py-3 text-right {{if .IntegCovered}}text-emerald-400{{else}}text-slate-600{{end}}">
+        {{if .IntegCovered}}✓{{else}}—{{end}}
+    </td>
+    <td class="px-4 py-3 text-right {{if .E2ECovered}}text-emerald-400{{else}}text-slate-600{{end}}">
+        {{if .E2ECovered}}✓{{else}}—{{end}}
+    </td>
+    <td class="px-4 py-3">
+        <div class="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+            <a href="/contract?feature={{.ID}}"
+                class="text-[10px] text-primary hover:text-blue-300 font-bold"
+                hx-get="/pages/contract?feature={{.ID}}"
+                hx-target="#page-content"
+                hx-swap="innerHTML"
+                hx-push-url="/contract?feature={{.ID}}">Contract</a>
+            <span class="text-slate-700">·</span>
+            <a href="/diagnose?feature={{.ID}}"
+                class="text-[10px] text-secondary hover:text-purple-300 font-bold"
+                hx-get="/pages/diagnose?feature={{.ID}}"
+                hx-target="#page-content"
+                hx-swap="innerHTML"
+                hx-push-url="/diagnose?feature={{.ID}}">Diagnose</a>
+        </div>
+    </td>
+</tr>
+{{else}}
+<tr>
+    <td colspan="7" class="px-4 py-8 text-center text-slate-500 text-sm">No features match the current filter.</td>
+</tr>
+{{end}}
+{{end}}

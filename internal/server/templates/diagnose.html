@@ -1,0 +1,159 @@
+{{define "diagnose-content"}}
+<div class="p-6 max-w-5xl mx-auto space-y-6">
+
+    <!-- Input Card -->
+    <section class="bg-surface-container-low p-6 rounded-lg shadow-sm border border-outline-variant/10">
+        <form hx-post="/pages/diagnose"
+            hx-target="#diagnose-results"
+            hx-swap="innerHTML"
+            hx-indicator="#diagnose-spinner"
+            class="flex flex-col md:flex-row gap-4 items-end">
+
+            <div class="flex-1 w-full space-y-2">
+                <label class="text-[10px] font-bold text-outline uppercase tracking-widest">Select Feature</label>
+                <div class="relative">
+                    <select name="feature"
+                        class="w-full bg-surface-container-lowest border-none text-on-surface font-mono text-sm py-2.5 px-4 rounded focus:ring-1 focus:ring-primary/40 appearance-none">
+                        {{range .AllFeatures}}
+                        <option value="{{.}}" {{if eq . $.DiagnoseFeature}}selected{{end}}>{{.}}</option>
+                        {{end}}
+                    </select>
+                    <span class="material-symbols-outlined absolute right-3 top-2.5 text-outline pointer-events-none">expand_more</span>
+                </div>
+            </div>
+
+            <div class="flex-[2] w-full space-y-2">
+                <label class="text-[10px] font-bold text-outline uppercase tracking-widest">Symptom / Error</label>
+                <input type="text"
+                    name="symptom"
+                    class="w-full bg-surface-container-lowest border-none text-on-surface font-mono text-sm py-2.5 px-4 rounded focus:ring-1 focus:ring-primary/40"
+                    placeholder="Paste log entry or error string..."
+                    value="{{.DiagnoseSymptom}}"/>
+            </div>
+
+            <button type="submit"
+                class="bg-gradient-to-b from-primary to-primary-container text-on-primary-container font-bold text-sm px-6 py-2.5 rounded flex items-center gap-2 hover:opacity-90 transition-all whitespace-nowrap h-[42px]">
+                <span class="material-symbols-outlined">search</span>
+                Diagnose
+                <span id="diagnose-spinner" class="htmx-indicator text-[10px]">...</span>
+            </button>
+        </form>
+
+        <!-- Quick-pick chips -->
+        <div class="mt-6 space-y-4">
+            <div class="flex flex-wrap gap-2">
+                <span class="text-[10px] w-full mb-1 text-outline-variant font-semibold uppercase tracking-tighter">HTTP Status Codes</span>
+                {{range .DiagnoseChips.HTTP}}
+                <button type="button" onclick="document.querySelector('[name=symptom]').value='{{.}}'"
+                    class="px-3 py-1 bg-surface-container-high text-on-surface-variant font-mono text-[11px] rounded hover:bg-primary/20 hover:text-primary transition-colors">{{.}}</button>
+                {{end}}
+            </div>
+            <div class="flex flex-wrap gap-2">
+                <span class="text-[10px] w-full mb-1 text-outline-variant font-semibold uppercase tracking-tighter">Data / Infrastructure</span>
+                {{range .DiagnoseChips.Infra}}
+                <button type="button" onclick="document.querySelector('[name=symptom]').value='{{.}}'"
+                    class="px-3 py-1 bg-surface-container-high text-on-surface-variant font-mono text-[11px] rounded hover:bg-surface-variant transition-colors">{{.}}</button>
+                {{end}}
+            </div>
+            <div class="flex flex-wrap gap-2">
+                <span class="text-[10px] w-full mb-1 text-outline-variant font-semibold uppercase tracking-tighter">Frontend Runtime</span>
+                {{range .DiagnoseChips.Frontend}}
+                <button type="button" onclick="document.querySelector('[name=symptom]').value='{{.}}'"
+                    class="px-3 py-1 bg-surface-container-high text-on-surface-variant font-mono text-[11px] rounded hover:bg-surface-variant transition-colors">{{.}}</button>
+                {{end}}
+            </div>
+        </div>
+    </section>
+
+    <!-- Results -->
+    <div id="diagnose-results">
+        {{if .Diagnose}}
+        {{template "diagnose-result" .Diagnose}}
+        {{end}}
+    </div>
+
+</div>
+{{end}}
+
+{{define "diagnose-result"}}
+{{if .Rule}}
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <!-- Main Diagnosis -->
+    <div class="lg:col-span-2 space-y-6">
+        <!-- Best Match -->
+        <div class="bg-surface-container-low rounded-lg overflow-hidden border-l-4 border-primary">
+            <div class="p-6">
+                <div class="flex justify-between items-start mb-4">
+                    <div>
+                        <h3 class="text-xs font-bold text-outline uppercase tracking-[0.2em] mb-1">Best Match</h3>
+                        <div class="flex items-center gap-2">
+                            <span class="font-mono text-primary font-bold">{{.Rule.Layer}}</span>
+                            <span class="text-on-surface-variant text-xs">•</span>
+                            <span class="font-mono text-on-surface-variant text-xs">{{.Rule.Description}}</span>
+                        </div>
+                    </div>
+                    <div class="text-right shrink-0 ml-4">
+                        <span class="font-mono text-2xl font-black text-primary">{{printf "%.0f" (mul .Rule.Confidence 100)}}%</span>
+                        <p class="text-[10px] text-outline font-semibold">CONFIDENCE</p>
+                    </div>
+                </div>
+                <div class="w-full bg-surface-container-highest h-1.5 rounded-full mb-6 overflow-hidden">
+                    <div class="bg-primary h-full rounded-full" style="width: {{printf "%.0f" (mul .Rule.Confidence 100)}}%"></div>
+                </div>
+                <p class="text-base leading-relaxed text-on-surface mb-6">{{.Rule.Description}}</p>
+                <div class="flex items-center gap-4 py-3 px-4 bg-surface-container-lowest rounded border border-outline-variant/20">
+                    <span class="text-[10px] font-bold text-outline uppercase tracking-widest">Check Order</span>
+                    <div class="flex items-center gap-2 flex-wrap">
+                        {{range $i, $step := .Rule.CheckOrder}}
+                        {{if $i}}<span class="material-symbols-outlined text-xs text-outline">arrow_forward</span>{{end}}
+                        <span class="font-mono text-xs px-2 py-0.5 bg-surface-variant rounded">{{$step}}</span>
+                        {{end}}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Also Matched -->
+        {{if gt (len .AllRules) 1}}
+        <div class="bg-surface-container rounded-lg p-6 space-y-4">
+            <h3 class="text-xs font-bold text-outline uppercase tracking-widest">Also Matched</h3>
+            {{range (slice .AllRules 1 (len .AllRules))}}
+            <div class="flex items-start gap-4 p-4 bg-surface-container-low rounded">
+                <div class="text-center w-12 shrink-0">
+                    <span class="font-mono text-lg font-bold text-secondary">{{printf "%.0f" (mul .Confidence 100)}}%</span>
+                </div>
+                <div>
+                    <h4 class="font-mono text-xs font-bold text-secondary-fixed-dim">{{.Layer}}</h4>
+                    <p class="text-sm text-on-surface-variant mt-1">{{.Description}}</p>
+                </div>
+            </div>
+            {{end}}
+        </div>
+        {{end}}
+    </div>
+
+    <!-- Files to Check -->
+    <div class="bg-surface-container-low p-6 rounded-lg shadow-sm border border-outline-variant/10">
+        <h3 class="text-xs font-bold text-outline uppercase tracking-[0.2em] mb-6">Files to Check</h3>
+        <div class="space-y-3">
+            {{range .CheckFiles}}
+            <div class="cursor-pointer hover:bg-surface-container-high p-3 rounded transition-colors bg-surface-container-lowest border-l-2 border-primary">
+                <div class="flex items-start gap-3">
+                    <span class="material-symbols-outlined text-primary text-sm mt-0.5">description</span>
+                    <p class="font-mono text-[11px] text-on-surface break-all">{{.}}</p>
+                </div>
+            </div>
+            {{else}}
+            <p class="text-slate-600 text-sm">No specific files identified for this symptom.</p>
+            {{end}}
+        </div>
+    </div>
+</div>
+{{else}}
+<div class="bg-surface-container-low rounded-lg p-8 text-center border border-outline-variant/10">
+    <span class="material-symbols-outlined text-4xl text-slate-600 mb-3 block">troubleshoot</span>
+    <p class="text-slate-400">No matching diagnostic rule found for: <code class="font-mono text-primary">{{.Symptom}}</code></p>
+    <p class="text-slate-600 text-sm mt-2">Try a different symptom or check the raw trace output.</p>
+</div>
+{{end}}
+{{end}}
