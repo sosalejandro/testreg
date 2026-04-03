@@ -45,7 +45,14 @@ func (r *ContractRenderer) RenderTerminal(output *domain.ContractOutput, maxLaye
 
 	if len(output.Layers) == 0 {
 		fmt.Fprintln(w)
-		fmt.Fprintf(w, "  %s\n", r.c(colorDim, "No layers found — feature has no traceable API surfaces."))
+		if output.TraceExempt {
+			fmt.Fprintf(w, "  %s\n", r.c(colorYellow, "⚑  TRACE EXEMPT — intentionally untraceable (contract_exempt: true)"))
+			if output.ExemptReason != "" {
+				fmt.Fprintf(w, "  %s\n", r.c(colorDim, "   Reason: "+output.ExemptReason))
+			}
+		} else {
+			fmt.Fprintf(w, "  %s\n", r.c(colorDim, "No layers found — feature has no traceable API surfaces."))
+		}
 		fmt.Fprintln(w)
 		return
 	}
@@ -100,6 +107,19 @@ func (r *ContractRenderer) RenderMarkdown(output *domain.ContractOutput, maxLaye
 		fmt.Fprintf(w, "**Entry Point:** `%s`\n", output.EntryPoint)
 	}
 	fmt.Fprintln(w)
+
+	if len(output.Layers) == 0 {
+		if output.TraceExempt {
+			fmt.Fprintf(w, "> **⚑ TRACE EXEMPT** — intentionally untraceable (`contract_exempt: true`)\n")
+			if output.ExemptReason != "" {
+				fmt.Fprintf(w, ">\n> **Reason:** %s\n", output.ExemptReason)
+			}
+		} else {
+			fmt.Fprintf(w, "> No layers found — feature has no traceable API surfaces.\n")
+		}
+		fmt.Fprintln(w)
+		return
+	}
 
 	for _, layer := range output.Layers {
 		if maxLayer > 0 && layer.Number > maxLayer {

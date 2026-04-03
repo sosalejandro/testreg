@@ -4,14 +4,15 @@ import "fmt"
 
 // Feature represents a single testable product feature with its coverage state.
 type Feature struct {
-	ID          string   `yaml:"id"`
-	Name        string   `yaml:"name"`
-	Description string   `yaml:"description"`
-	Roles       []string `yaml:"roles"`
-	Priority    Priority `yaml:"priority"`
-	Surfaces    Surfaces `yaml:"surfaces"`
-	Coverage    Coverage `yaml:"coverage"`
-	Notes       string   `yaml:"notes,omitempty"`
+	ID              string   `yaml:"id"`
+	Name            string   `yaml:"name"`
+	Description     string   `yaml:"description"`
+	Roles           []string `yaml:"roles"`
+	Priority        Priority `yaml:"priority"`
+	Surfaces        Surfaces `yaml:"surfaces"`
+	Coverage        Coverage `yaml:"coverage"`
+	Notes           string   `yaml:"notes,omitempty"`
+	ContractExempt  bool     `yaml:"contract_exempt,omitempty"`
 }
 
 // Surfaces describes where a feature is exposed to users.

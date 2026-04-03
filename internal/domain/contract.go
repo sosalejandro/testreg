@@ -2,12 +2,14 @@ package domain
 
 // ContractOutput holds the full API contract for a feature.
 type ContractOutput struct {
-	FeatureID   string              `json:"feature_id" yaml:"feature_id"`
-	FeatureName string              `json:"feature_name" yaml:"feature_name"`
-	Priority    string              `json:"priority" yaml:"priority"`
-	EntryPoint  string              `json:"entry_point" yaml:"entry_point"`
-	Layers      []ContractLayer     `json:"layers" yaml:"layers"`
-	TestFiles   []ContractTestEntry `json:"test_files" yaml:"test_files"`
+	FeatureID    string              `json:"feature_id" yaml:"feature_id"`
+	FeatureName  string              `json:"feature_name" yaml:"feature_name"`
+	Priority     string              `json:"priority" yaml:"priority"`
+	EntryPoint   string              `json:"entry_point" yaml:"entry_point"`
+	Layers       []ContractLayer     `json:"layers" yaml:"layers"`
+	TestFiles    []ContractTestEntry `json:"test_files" yaml:"test_files"`
+	TraceExempt  bool                `json:"trace_exempt,omitempty" yaml:"trace_exempt,omitempty"`
+	ExemptReason string              `json:"exempt_reason,omitempty" yaml:"exempt_reason,omitempty"`
 }
 
 // ContractLayer represents one architectural layer in the call chain.

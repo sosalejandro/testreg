@@ -105,14 +105,19 @@ func (uc *ContractFeatureUseCase) Execute(registryDir, featureID string, config 
 	// Step 6: Collect test file information.
 	testFiles := uc.collectContractTestEntries(feature, layers)
 
-	return &domain.ContractOutput{
+	out := &domain.ContractOutput{
 		FeatureID:   feature.ID,
 		FeatureName: feature.Name,
 		Priority:    string(feature.Priority),
 		EntryPoint:  entryPoint,
 		Layers:      layers,
 		TestFiles:   testFiles,
-	}, nil
+	}
+	if feature.ContractExempt {
+		out.TraceExempt = true
+		out.ExemptReason = feature.Notes
+	}
+	return out, nil
 }
 
 // buildLayersFromTrace walks the trace tree depth-first following the primary
